@@ -48,14 +48,21 @@ const corsOptions = {
     'http://localhost:4028',  // Your previous frontend port
     'http://localhost:3000',  // Alternative React port
     'http://localhost:3001',  // Previous backend port
-    'https://cardtrack.onrender.com',  // Current backend port
+    'http://localhost:3003',  // Current backend port
     'http://localhost:3004',  // Alternative backend port
     // Production origins (add your actual frontend domains)
     process.env.FRONTEND_URL,
+    'https://cardtrack-ke78.vercel.app',  // Your actual Vercel domain
     'https://cardtracker-pro.vercel.app',
     'https://cardtracker-pro.netlify.app',
     'https://cardtracker-pro.onrender.com',
-  ].filter(Boolean), // Remove undefined values
+    // Allow all Vercel domains
+    /^https:\/\/.*\.vercel\.app$/,
+    // Allow all Netlify domains
+    /^https:\/\/.*\.netlify\.app$/,
+    // Allow all Render domains
+    /^https:\/\/.*\.onrender\.com$/,
+  ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
