@@ -3,7 +3,7 @@ import { getAccessToken, clearTokens } from './auth';
 
 // Create axios instance for company API
 const api = axios.create({
-  baseURL: 'http://localhost:3003/api/company',
+  baseURL: 'https://cardtrack.onrender.com/api/company',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',

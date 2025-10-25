@@ -53,7 +53,7 @@ export const RealtimeProvider = ({ children }) => {
     }
 
     const authToken = getAccessToken();
-    const newSocket = io('http://localhost:3003', {
+    const newSocket = io('https://cardtrack.onrender.com', {
       auth: {
         token: authToken
       },

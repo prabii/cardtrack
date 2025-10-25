@@ -2,7 +2,7 @@ import axios from 'axios';
 import { generateTokens, storeTokens, clearTokens, addAuthHeader, handleTokenExpiration } from './auth';
 
 // API base URL (in production, this should be your backend URL)
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3003/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://cardtrack.onrender.com/api';
 console.log('[AuthAPI] Base URL:', API_BASE_URL);
 
 // Create axios instance

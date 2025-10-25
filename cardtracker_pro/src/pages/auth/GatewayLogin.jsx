@@ -29,7 +29,7 @@ const GatewayLogin = () => {
     setError('');
 
     try {
-      const response = await fetch('http://localhost:3003/api/auth/login/gateway', {
+      const response = await fetch('https://cardtrack.onrender.com/api/auth/login/gateway', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

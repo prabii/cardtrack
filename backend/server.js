@@ -48,7 +48,7 @@ const corsOptions = {
     'http://localhost:4028',  // Your previous frontend port
     'http://localhost:3000',  // Alternative React port
     'http://localhost:3001',  // Previous backend port
-    'http://localhost:3003',  // Current backend port
+    'https://cardtrack.onrender.com',  // Current backend port
     'http://localhost:3004',  // Alternative backend port
     // Production origins (add your actual frontend domains)
     process.env.FRONTEND_URL,

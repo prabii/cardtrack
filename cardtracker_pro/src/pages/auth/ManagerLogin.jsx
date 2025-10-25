@@ -29,7 +29,7 @@ const ManagerLogin = () => {
     setError('');
 
     try {
-      const response = await fetch('http://localhost:3003/api/auth/login/manager', {
+      const response = await fetch('https://cardtrack.onrender.com/api/auth/login/manager', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -32,7 +32,7 @@ const AdminLogin = () => {
       console.log('Admin login attempt with data:', formData);
       
       // Use admin-specific login endpoint
-      const response = await fetch('http://localhost:3003/api/auth/login/admin', {
+      const response = await fetch('https://cardtrack.onrender.com/api/auth/login/admin', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

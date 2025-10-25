@@ -36,7 +36,7 @@ const Users = () => {
       if (roleFilter) params.append('role', roleFilter);
       if (statusFilter) params.append('status', statusFilter);
 
-      const response = await fetch(`http://localhost:3003/api/users?${params}`, {
+      const response = await fetch(`https://cardtrack.onrender.com/api/users?${params}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
           'Content-Type': 'application/json'
@@ -84,7 +84,7 @@ const Users = () => {
     }
 
     try {
-      const response = await fetch(`http://localhost:3003/api/users/${userId}`, {
+      const response = await fetch(`https://cardtrack.onrender.com/api/users/${userId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,

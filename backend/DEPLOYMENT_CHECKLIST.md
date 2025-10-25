@@ -1,4 +1,4 @@
-# ✅ CardTracker Pro Backend - Render Deployment Checklist
+git # ✅ CardTracker Pro Backend - Render Deployment Checklist
 
 ## **Pre-Deployment Checklist**
 
@@ -189,7 +189,7 @@ npm install
 npm start
 
 # Check health
-curl http://localhost:3003/api/health
+curl https://cardtrack.onrender.com/api/health
 
 # Deploy to Render
 # 1. Push to GitHub
