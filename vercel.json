@@ -8,5 +8,10 @@
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "functions": {
+    "cardtracker_pro/src/**/*.js": {
+      "runtime": "nodejs18.x"
+    }
+  }
 }
