@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "buildCommand": "cd cardtracker_pro && npm run build",
+  "outputDirectory": "cardtracker_pro/build",
+  "installCommand": "cd cardtracker_pro && npm install",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
