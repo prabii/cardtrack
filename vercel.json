@@ -1,17 +1,18 @@
 {
   "version": 2,
-  "buildCommand": "cd cardtracker_pro && npm install && npm run build",
-  "outputDirectory": "cardtracker_pro/build",
-  "installCommand": "cd cardtracker_pro && npm install",
+  "builds": [
+    {
+      "src": "cardtracker_pro/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "build"
+      }
+    }
+  ],
   "rewrites": [
     {
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ],
-  "functions": {
-    "cardtracker_pro/src/**/*.js": {
-      "runtime": "nodejs18.x"
-    }
-  }
+  ]
 }
