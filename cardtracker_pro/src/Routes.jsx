@@ -46,7 +46,7 @@ const Routes = () => {
           <Route 
             path="/login" 
             element={
-              <PublicRoute>
+              <PublicRoute allowAuthenticated={true}>
                 <Login />
               </PublicRoute>
             } 
@@ -108,13 +108,13 @@ const Routes = () => {
             } 
           />
 
-          {/* Protected Routes */}
+          {/* Root Route - Redirect to Login */}
           <Route 
             path="/" 
             element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
+              <PublicRoute allowAuthenticated={true}>
+                <Login />
+              </PublicRoute>
             } 
           />
           <Route 

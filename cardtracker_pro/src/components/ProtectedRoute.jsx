@@ -38,10 +38,10 @@ const ProtectedRoute = ({ children, redirectTo = '/login' }) => {
 };
 
 /**
- * PublicRoute component that redirects authenticated users away from auth pages
- * Used for login and signup pages
+ * PublicRoute component that allows access to auth pages
+ * Used for login and signup pages - allows access even when authenticated
  */
-export const PublicRoute = ({ children, redirectTo = '/dashboard' }) => {
+export const PublicRoute = ({ children, redirectTo = '/dashboard', allowAuthenticated = true }) => {
   const { isAuthenticated, isLoading } = useAuth();
 
   // Show loading spinner while checking authentication
@@ -56,12 +56,12 @@ export const PublicRoute = ({ children, redirectTo = '/dashboard' }) => {
     );
   }
 
-  // Redirect to dashboard if already authenticated
-  if (isAuthenticated) {
+  // Redirect to dashboard if already authenticated (unless allowAuthenticated is true)
+  if (isAuthenticated && !allowAuthenticated) {
     return <Navigate to={redirectTo} replace />;
   }
 
-  // Render public content if not authenticated
+  // Render public content
   return children;
 };
 
