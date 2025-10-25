@@ -72,6 +72,13 @@ const Header = () => {
     setIsUserMenuOpen(false);
   };
 
+  const handleForceLogin = async () => {
+    // Clear all authentication data
+    localStorage.clear();
+    // Reload the page to reset auth state
+    window.location.href = '/login';
+  };
+
   // Close user menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -120,6 +127,18 @@ const Header = () => {
               {item?.label}
             </Button>
           ))}
+          
+          {/* Login Button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleForceLogin}
+            className="px-3 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+            title="Go to Login Page"
+          >
+            <Icon name="LogIn" size={16} />
+            <span className="ml-1">Login</span>
+          </Button>
         </nav>
 
         {/* User Actions & Mobile Menu */}
