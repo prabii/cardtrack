@@ -12,6 +12,7 @@ import ResetPassword from './pages/reset-password';
 import AdminLogin from './pages/auth/AdminLogin';
 import ManagerLogin from './pages/auth/ManagerLogin';
 import GatewayLogin from './pages/auth/GatewayLogin';
+import AdminPortalLogin from './pages/admin/AdminLogin';
 import CardDetails from './pages/card-details';
 import AddCreditCard from './pages/add-credit-card';
 import Dashboard from './pages/dashboard';
@@ -71,6 +72,14 @@ const Routes = () => {
             element={
               <PublicRoute>
                 <AdminLogin />
+              </PublicRoute>
+            } 
+          />
+          <Route 
+            path="/admin" 
+            element={
+              <PublicRoute>
+                <AdminPortalLogin />
               </PublicRoute>
             } 
           />
