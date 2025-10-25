@@ -1,8 +1,0 @@
-{
-  "name": "cardtracker-pro-root",
-  "version": "1.0.0",
-  "scripts": {
-    "build": "cd cardtracker_pro && npm install && npm run build",
-    "install": "cd cardtracker_pro && npm install"
-  }
-}
