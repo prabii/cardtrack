@@ -130,7 +130,7 @@ const Login = () => {
             </div>
           </div>
           <h2 className="text-4xl font-bold text-white mb-2">
-            Welcome Back
+            Welcome Back - CardTracker Pro
           </h2>
           <p className="text-lg text-gray-300 mb-8">
             Sign in to your CardTracker Pro account
@@ -264,36 +264,40 @@ const Login = () => {
               </button>
             </div>
 
-            {/* Admin Login Section */}
-            <div className="mt-8 pt-6 border-t border-white/20">
-              <div className="text-center mb-4">
-                <h3 className="text-lg font-semibold text-white mb-2">🔐 Admin Access</h3>
-                <p className="text-sm text-gray-300">Authorized personnel only</p>
+            {/* Admin Login Section - FORCE UPDATE */}
+            <div className="mt-8 pt-6 border-t-2 border-red-500/50">
+              <div className="text-center mb-6">
+                <div className="bg-red-500/20 rounded-lg p-4 mb-4">
+                  <h3 className="text-xl font-bold text-white mb-2">🔐 ADMIN PORTAL ACCESS</h3>
+                  <p className="text-sm text-red-200 font-medium">AUTHORIZED PERSONNEL ONLY</p>
+                </div>
               </div>
               
               <button
                 type="button"
                 onClick={handleAdminLogin}
                 disabled={isLoading}
-                className="w-full flex justify-center py-3 px-4 border border-red-500/30 text-sm font-medium rounded-xl text-white bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl"
+                className="w-full flex justify-center py-4 px-6 border-2 border-red-500 text-lg font-bold rounded-xl text-white bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 focus:outline-none focus:ring-4 focus:ring-red-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-2xl hover:shadow-red-500/25 transform hover:scale-105"
               >
                 {isLoading ? (
                   <div className="flex items-center">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Authenticating...
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
+                    <span>Authenticating Admin...</span>
                   </div>
                 ) : (
                   <div className="flex items-center">
-                    <span>🚀 Admin Login</span>
+                    <span className="text-xl">🚀 ADMIN LOGIN</span>
                   </div>
                 )}
               </button>
               
-              <div className="mt-3 text-center">
-                <div className="text-xs text-gray-400 mb-1">Default Admin Credentials:</div>
-                <div className="text-xs text-gray-300">
-                  <div>Email: admin@codershive.com</div>
-                  <div>Password: Admin@12345</div>
+              <div className="mt-4 p-4 bg-yellow-500/20 border border-yellow-500/30 rounded-lg">
+                <div className="text-center">
+                  <div className="text-sm font-bold text-yellow-200 mb-2">🔑 DEFAULT ADMIN CREDENTIALS</div>
+                  <div className="text-sm text-yellow-100 space-y-1">
+                    <div><strong>Email:</strong> admin@codershive.com</div>
+                    <div><strong>Password:</strong> Admin@12345</div>
+                  </div>
                 </div>
               </div>
             </div>
