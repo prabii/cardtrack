@@ -24,6 +24,12 @@ const Login = () => {
     clearError();
   }, [clearError]);
 
+  // Force logout if user is already authenticated (for testing)
+  const handleForceLogout = () => {
+    localStorage.clear();
+    window.location.reload();
+  };
+
   // Handle form input changes
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -212,6 +218,16 @@ const Login = () => {
               >
                 🔐 Admin Login
               </Link>
+            </div>
+
+            {/* Clear Session Button */}
+            <div className="mt-4 text-center">
+              <button
+                onClick={handleForceLogout}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-400 hover:text-gray-300 transition-colors"
+              >
+                🗑️ Clear Session
+              </button>
             </div>
           </form>
         </div>
