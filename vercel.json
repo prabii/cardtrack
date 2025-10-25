@@ -2,10 +2,10 @@
   "version": 2,
   "builds": [
     {
-      "src": "cardtracker_pro/package.json",
+      "src": "cardtracker_pro/**",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "build"
+        "distDir": "cardtracker_pro/build"
       }
     }
   ],
