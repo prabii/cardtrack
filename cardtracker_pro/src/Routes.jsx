@@ -84,6 +84,14 @@ const Routes = () => {
             } 
           />
           <Route 
+            path="/admin-portal" 
+            element={
+              <PublicRoute>
+                <AdminPortalLogin />
+              </PublicRoute>
+            } 
+          />
+          <Route 
             path="/manager-login" 
             element={
               <PublicRoute>

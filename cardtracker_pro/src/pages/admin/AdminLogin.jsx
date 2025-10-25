@@ -91,7 +91,7 @@ const AdminLogin = () => {
             </svg>
           </div>
           <h2 className="mt-6 text-center text-4xl font-extrabold text-gray-900">
-            🔐 Admin Portal
+            🔐 Admin Portal - CardTracker Pro
           </h2>
           <p className="mt-2 text-center text-lg text-gray-600">
             Secure Admin Access
