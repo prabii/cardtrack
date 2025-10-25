@@ -57,66 +57,6 @@ const Login = () => {
     }
   };
 
-  // Handle admin login
-  const handleAdminLogin = async () => {
-    setIsLoading(true);
-    setError('');
-
-    try {
-      console.log('Admin login attempt');
-      
-      // Use admin-specific login endpoint
-      const response = await fetch('https://cardtrack.onrender.com/api/auth/login/admin', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: 'admin@codershive.com',
-          password: 'Admin@12345'
-        })
-      });
-      
-      console.log('Response status:', response.status);
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Login error response:', errorData);
-        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      console.log('Response data:', data);
-
-      if (data.success) {
-        // Store tokens manually
-        const { accessToken, refreshToken } = data.tokens;
-        localStorage.setItem('accessToken', accessToken);
-        localStorage.setItem('refreshToken', refreshToken);
-        
-        // Update auth context with the user data from response
-        const userData = {
-          id: data.user._id,
-          name: data.user.name,
-          email: data.user.email,
-          role: data.user.role
-        };
-        
-        // Manually update the auth context
-        localStorage.setItem('user', JSON.stringify(userData));
-        
-        // Force page reload to update auth context
-        window.location.href = '/dashboard';
-      } else {
-        setError(data.message || 'Admin login failed');
-      }
-    } catch (err) {
-      console.error('Admin login error:', err);
-      setError(err.message || 'Network error. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
 
   return (
@@ -130,7 +70,7 @@ const Login = () => {
             </div>
           </div>
           <h2 className="text-4xl font-bold text-white mb-2">
-            Welcome Back - CardTracker Pro
+            Welcome Back
           </h2>
           <p className="text-lg text-gray-300 mb-8">
             Sign in to your CardTracker Pro account
@@ -264,42 +204,14 @@ const Login = () => {
               </button>
             </div>
 
-            {/* Admin Login Section - FORCE UPDATE */}
-            <div className="mt-8 pt-6 border-t-2 border-red-500/50">
-              <div className="text-center mb-6">
-                <div className="bg-red-500/20 rounded-lg p-4 mb-4">
-                  <h3 className="text-xl font-bold text-white mb-2">🔐 ADMIN PORTAL ACCESS</h3>
-                  <p className="text-sm text-red-200 font-medium">AUTHORIZED PERSONNEL ONLY</p>
-                </div>
-              </div>
-              
-              <button
-                type="button"
-                onClick={handleAdminLogin}
-                disabled={isLoading}
-                className="w-full flex justify-center py-4 px-6 border-2 border-red-500 text-lg font-bold rounded-xl text-white bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 focus:outline-none focus:ring-4 focus:ring-red-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-2xl hover:shadow-red-500/25 transform hover:scale-105"
+            {/* Admin Login Button */}
+            <div className="mt-6 text-center">
+              <Link 
+                to="/admin-login" 
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-red-400 hover:text-red-300 transition-colors"
               >
-                {isLoading ? (
-                  <div className="flex items-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
-                    <span>Authenticating Admin...</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center">
-                    <span className="text-xl">🚀 ADMIN LOGIN</span>
-                  </div>
-                )}
-              </button>
-              
-              <div className="mt-4 p-4 bg-yellow-500/20 border border-yellow-500/30 rounded-lg">
-                <div className="text-center">
-                  <div className="text-sm font-bold text-yellow-200 mb-2">🔑 DEFAULT ADMIN CREDENTIALS</div>
-                  <div className="text-sm text-yellow-100 space-y-1">
-                    <div><strong>Email:</strong> admin@codershive.com</div>
-                    <div><strong>Password:</strong> Admin@12345</div>
-                  </div>
-                </div>
-              </div>
+                🔐 Admin Login
+              </Link>
             </div>
           </form>
         </div>
