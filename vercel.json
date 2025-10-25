@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "cardtracker_pro/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "cardtracker_pro/build"
+      }
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
