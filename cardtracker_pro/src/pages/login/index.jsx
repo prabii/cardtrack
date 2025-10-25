@@ -57,6 +57,67 @@ const Login = () => {
     }
   };
 
+  // Handle admin login
+  const handleAdminLogin = async () => {
+    setIsLoading(true);
+    setError('');
+
+    try {
+      console.log('Admin login attempt');
+      
+      // Use admin-specific login endpoint
+      const response = await fetch('https://cardtrack.onrender.com/api/auth/login/admin', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: 'admin@codershive.com',
+          password: 'Admin@12345'
+        })
+      });
+      
+      console.log('Response status:', response.status);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Login error response:', errorData);
+        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('Response data:', data);
+
+      if (data.success) {
+        // Store tokens manually
+        const { accessToken, refreshToken } = data.tokens;
+        localStorage.setItem('accessToken', accessToken);
+        localStorage.setItem('refreshToken', refreshToken);
+        
+        // Update auth context with the user data from response
+        const userData = {
+          id: data.user._id,
+          name: data.user.name,
+          email: data.user.email,
+          role: data.user.role
+        };
+        
+        // Manually update the auth context
+        localStorage.setItem('user', JSON.stringify(userData));
+        
+        // Force page reload to update auth context
+        window.location.href = '/dashboard';
+      } else {
+        setError(data.message || 'Admin login failed');
+      }
+    } catch (err) {
+      console.error('Admin login error:', err);
+      setError(err.message || 'Network error. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -201,6 +262,40 @@ const Login = () => {
                   </div>
                 )}
               </button>
+            </div>
+
+            {/* Admin Login Section */}
+            <div className="mt-8 pt-6 border-t border-white/20">
+              <div className="text-center mb-4">
+                <h3 className="text-lg font-semibold text-white mb-2">🔐 Admin Access</h3>
+                <p className="text-sm text-gray-300">Authorized personnel only</p>
+              </div>
+              
+              <button
+                type="button"
+                onClick={handleAdminLogin}
+                disabled={isLoading}
+                className="w-full flex justify-center py-3 px-4 border border-red-500/30 text-sm font-medium rounded-xl text-white bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl"
+              >
+                {isLoading ? (
+                  <div className="flex items-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Authenticating...
+                  </div>
+                ) : (
+                  <div className="flex items-center">
+                    <span>🚀 Admin Login</span>
+                  </div>
+                )}
+              </button>
+              
+              <div className="mt-3 text-center">
+                <div className="text-xs text-gray-400 mb-1">Default Admin Credentials:</div>
+                <div className="text-xs text-gray-300">
+                  <div>Email: admin@codershive.com</div>
+                  <div>Password: Admin@12345</div>
+                </div>
+              </div>
             </div>
           </form>
         </div>
