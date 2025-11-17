@@ -4,6 +4,7 @@ const http = require('http');
 const connectDB = require('./config/database');
 const SocketService = require('./services/socketService');
 const User = require('./models/User');
+const Gateway = require('./models/Gateway');
 
 // Load environment variables
 require('dotenv').config();
@@ -15,6 +16,39 @@ const PORT = process.env.PORT || 3003;
 // Connect to MongoDB
 connectDB();
 
+// Get default permissions based on role
+function getDefaultPermissions(userRole) {
+  const permissions = {
+    admin: [
+      'view_cardholders', 'create_cardholders', 'edit_cardholders', 'delete_cardholders',
+      'view_bill_payments', 'create_bill_payments', 'process_bill_payments',
+      'view_gateways', 'manage_gateways', 'view_reports', 'manage_company',
+      'manage_users', 'view_all_data'
+    ],
+    manager: [
+      'view_cardholders', 'create_cardholders', 'edit_cardholders', 'delete_cardholders',
+      'view_bill_payments', 'create_bill_payments', 'process_bill_payments',
+      'view_reports', 'view_all_data'
+    ],
+    member: [
+      'view_cardholders', 'create_cardholders', 'edit_cardholders',
+      'view_bill_payments', 'create_bill_payments'
+    ],
+    gateway_manager: [
+      'view_gateways', 'manage_gateways', 'view_bill_payments', 'process_bill_payments',
+      'view_reports', 'view_all_data'
+    ],
+    operator: [
+      'view_cardholders', 'edit_cardholders',
+      'view_bill_payments', 'process_bill_payments',
+      'view_transactions', 'verify_transactions',
+      'view_gateways',
+      'view_reports', 'manage_alerts'
+    ]
+  };
+  return permissions[userRole] || permissions.member;
+}
+
 // Seed default users if they don't exist
 async function ensureDefaultUsers() {
   try {
@@ -22,19 +56,66 @@ async function ensureDefaultUsers() {
       { name: 'Alice Admin', email: 'admin@codershive.com', password: 'Admin@12345', role: 'admin' },
       { name: 'Mark Manager', email: 'manager@codershive.com', password: 'Manager@12345', role: 'manager' },
       { name: 'Gary Gateway', email: 'gateway@codershive.com', password: 'Gateway@12345', role: 'gateway_manager' },
-      { name: 'Mia Member', email: 'member@codershive.com', password: 'Member@12345', role: 'member' }
+      { name: 'Mia Member', email: 'member@codershive.com', password: 'Member@12345', role: 'member' },
+      { name: 'Oscar Operator', email: 'operator@codershive.com', password: 'Operator@12345', role: 'operator' }
     ];
 
     for (const u of defaults) {
       const existing = await User.findOne({ email: u.email.toLowerCase() });
       if (!existing) {
-        const user = new User(u);
+        const user = new User({
+          ...u,
+          permissions: getDefaultPermissions(u.role),
+          isActive: true
+        });
         await user.save();
         console.log(`✅ Seeded user: ${u.email} (${u.role})`);
+      } else {
+        // Update existing user to ensure correct role, permissions, and active status
+        if (existing.role !== u.role || !existing.isActive || existing.permissions.length === 0) {
+          existing.role = u.role;
+          existing.permissions = getDefaultPermissions(u.role);
+          existing.isActive = true;
+          // Only update password if it seems incorrect (check if it's not hashed properly)
+          // Note: This won't update password if it's already correct
+          await existing.save();
+          console.log(`🔄 Updated user: ${u.email} (${u.role})`);
+        }
       }
     }
   } catch (e) {
     console.warn('⚠️ Failed to seed default users:', e?.message || e);
+  }
+}
+
+// Seed default gateways if they don't exist
+async function ensureDefaultGateways() {
+  try {
+    const defaults = [
+      { name: 'PayPoint', description: 'PayPoint Payment Gateway' },
+      { name: 'InstantMudra', description: 'InstantMudra Payment Gateway' }
+    ];
+
+    for (const gateway of defaults) {
+      const existing = await Gateway.findOne({ name: gateway.name });
+      if (!existing) {
+        const newGateway = new Gateway({
+          ...gateway,
+          isActive: true
+        });
+        await newGateway.save();
+        console.log(`✅ Seeded gateway: ${gateway.name}`);
+      } else {
+        // Ensure gateway is active
+        if (!existing.isActive) {
+          existing.isActive = true;
+          await existing.save();
+          console.log(`🔄 Activated gateway: ${gateway.name}`);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('⚠️ Failed to seed default gateways:', e?.message || e);
   }
 }
 
@@ -110,11 +191,15 @@ app.use('/api/banks', require('./routes/banks'));
 app.use('/api/transactions', require('./routes/transactions'));
 app.use('/api/bank-summaries', require('./routes/bankSummaries'));
 app.use('/api/bill-payments', require('./routes/billPayments'));
+app.use('/api/gateways', require('./routes/gateways'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/company', require('./routes/company'));
+app.use('/api/alerts', require('./routes/alerts'));
 
 // Initialize Socket.IO
 const socketService = new SocketService(server);
+// Make socketService available globally for routes
+global.socketService = socketService;
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -158,6 +243,7 @@ server.listen(PORT, async () => {
   console.log(`🌐 CORS enabled for: Vercel, Netlify, Render domains and localhost`);
 
   await ensureDefaultUsers();
+  await ensureDefaultGateways();
 });
 
 // Export socket service for use in other modules

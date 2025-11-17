@@ -104,6 +104,9 @@ class SocketService {
         }
       });
 
+      // Join alerts module room for real-time alerts
+      socket.join('module_alerts');
+
       // Handle joining specific rooms
       socket.on('join_room', (roomId) => {
         socket.join(roomId);
@@ -136,6 +139,15 @@ class SocketService {
       // Handle viewing indicators
       socket.on('viewing', (data) => {
         this.broadcastViewing(socket, data);
+      });
+
+      // Handle editing indicators
+      socket.on('editing_start', (data) => {
+        this.broadcastEditing(socket, data, true);
+      });
+
+      socket.on('editing_stop', (data) => {
+        this.broadcastEditing(socket, data, false);
       });
 
       // Handle getting online users
@@ -312,6 +324,24 @@ class SocketService {
     // Only show viewing indicators, not notifications
   }
 
+  broadcastEditing(socket, data, isEditing) {
+    const { resource, resourceId } = data;
+    
+    // Broadcast to all users viewing this resource
+    socket.to(`module_${resource}`).emit('editing_indicator', {
+      userId: socket.userId,
+      user: {
+        id: socket.user._id,
+        name: socket.user.name,
+        role: socket.user.role
+      },
+      resource,
+      resourceId,
+      isEditing,
+      timestamp: new Date()
+    });
+  }
+
   handleDisconnect(socket) {
     const userId = socket.userId;
     
@@ -375,6 +405,42 @@ class SocketService {
       const socketId = this.connectedUsers.get(userId);
       return this.userSockets.get(socketId);
     }).filter(Boolean);
+  }
+
+  // Broadcast alert to relevant users
+  broadcastAlert(alertData) {
+    const { type, priority, roles = ['admin', 'manager', 'operator'] } = alertData;
+    
+    // Broadcast to roles that should see this alert
+    roles.forEach(role => {
+      this.io.to(`role_${role}`).emit('alert', {
+        ...alertData,
+        timestamp: new Date()
+      });
+    });
+
+    // Also broadcast to alerts module room
+    this.io.to('module_alerts').emit('alert', {
+      ...alertData,
+      timestamp: new Date()
+    });
+
+    // Send notification for high priority alerts
+    if (priority === 'high') {
+      this.io.to('admin_room').emit('notification', {
+        id: Date.now() + Math.random(),
+        type: 'alert',
+        title: alertData.title || 'New Alert',
+        message: alertData.message || '',
+        priority: alertData.priority,
+        timestamp: new Date()
+      });
+    }
+  }
+
+  // Get socket service instance for use in routes
+  static getInstance() {
+    return this.instance;
   }
 }
 

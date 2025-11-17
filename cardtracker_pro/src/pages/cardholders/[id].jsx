@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Header from '../../components/ui/Header';
 import { getCardholder } from '../../utils/cardholderApi';
 import { useRealtime } from '../../contexts/RealtimeContext';
-import RealtimeActivity from '../../components/RealtimeActivity';
+import { useAuth } from '../../contexts/AuthContext';
 import { 
   User, 
   Mail, 
@@ -29,13 +29,15 @@ import {
 const CardholderDashboard = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { trackActivity, trackViewing } = useRealtime();
+  const { trackActivity, trackViewing, getViewingUsers, getEditingUsers, startEditing, stopEditing } = useRealtime();
+  const { user } = useAuth();
   const [cardholder, setCardholder] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [transactions, setTransactions] = useState([]);
   const [bankData, setBankData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
 
 
   // Load cardholder data from API
@@ -43,16 +45,52 @@ const CardholderDashboard = () => {
     loadCardholderData();
   }, [id]);
 
-  // Track viewing activity
+  // Track viewing activity - send periodic updates
   useEffect(() => {
-    if (cardholder) {
+    if (cardholder && !isEditing) {
+      // Initial tracking
       trackViewing('cardholder', id, 'viewing');
       trackActivity('cardholder', 'viewed', id, {
         cardholderName: cardholder.name,
         cardholderEmail: cardholder.email
       });
+
+      // Set up periodic viewing updates (every 30 seconds)
+      const viewingInterval = setInterval(() => {
+        trackViewing('cardholder', id, 'viewing');
+      }, 30000);
+
+      return () => {
+        clearInterval(viewingInterval);
+      };
     }
-  }, [cardholder, id, trackViewing, trackActivity]);
+  }, [cardholder, id, trackViewing, trackActivity, isEditing]);
+
+  // Get viewing and editing users
+  const viewingUsers = getViewingUsers('cardholder', id);
+  const editingUsers = getEditingUsers('cardholder', id);
+  
+  // Filter out current user from viewing/editing lists
+  const otherViewingUsers = viewingUsers.filter(u => u.userId !== user?.id && u.userId !== user?._id);
+  const otherEditingUsers = editingUsers.filter(u => u.userId !== user?.id && u.userId !== user?._id);
+
+  // Track editing when edit button is clicked
+  const handleEditClick = () => {
+    setIsEditing(true);
+    startEditing('cardholder', id);
+    navigate(`/cardholders/${id}/edit`);
+  };
+
+  // Cleanup editing indicator on unmount
+  useEffect(() => {
+    return () => {
+      if (isEditing) {
+        stopEditing('cardholder', id);
+      }
+      // Stop viewing when component unmounts
+      // Note: viewing will automatically timeout on backend
+    };
+  }, [isEditing, id, stopEditing]);
 
   const loadCardholderData = async () => {
     try {
@@ -63,10 +101,12 @@ const CardholderDashboard = () => {
       console.log('Cardholder response:', response);
       
       if (response.success) {
-        setCardholder(response.data.cardholder || response.data);
-        // Use only real data from API
-        setTransactions(response.data.recentTransactions || []);
-        setBankData(response.data.banks || []);
+        const data = response.data;
+        setCardholder(data.cardholder || data);
+        // Load transactions from API
+        setTransactions(data.transactions || data.recentTransactions || []);
+        // Load banks from API
+        setBankData(data.bankSummaries || data.banks || []);
       } else {
         throw new Error(response.message || 'Failed to load cardholder');
       }
@@ -167,6 +207,40 @@ const CardholderDashboard = () => {
       
       <main className="pt-16">
         <div className="max-w-7xl mx-auto px-4 lg:px-6 py-8">
+          {/* Real-time Activity Indicators */}
+          {(otherViewingUsers.length > 0 || otherEditingUsers.length > 0) && (
+            <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center space-x-4">
+              {otherEditingUsers.length > 0 && (
+                <div className="flex items-center space-x-2">
+                  <Edit3 className="w-4 h-4 text-orange-600" />
+                  <span className="text-sm text-gray-700">
+                    {otherEditingUsers.map((u, idx) => (
+                      <span key={u.userId}>
+                        <span className="font-semibold text-orange-600">{u.user?.name || 'Someone'}</span>
+                        {idx < otherEditingUsers.length - 1 ? ', ' : ''}
+                      </span>
+                    ))}
+                    {otherEditingUsers.length === 1 ? ' is editing' : ' are editing'}
+                  </span>
+                </div>
+              )}
+              {otherViewingUsers.length > 0 && (
+                <div className="flex items-center space-x-2">
+                  <Eye className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm text-gray-700">
+                    {otherViewingUsers.map((u, idx) => (
+                      <span key={u.userId}>
+                        <span className="font-semibold text-blue-600">{u.user?.name || 'Someone'}</span>
+                        {idx < otherViewingUsers.length - 1 ? ', ' : ''}
+                      </span>
+                    ))}
+                    {otherViewingUsers.length === 1 ? ' is viewing' : ' are viewing'}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Header Section */}
           <div className="mb-8">
             <div className="flex items-center justify-between">
@@ -188,22 +262,16 @@ const CardholderDashboard = () => {
                 </div>
               </div>
               
-              {/* Real-time Activity Indicator */}
-              <div className="flex items-center gap-4">
-                <RealtimeActivity 
-                  resource="cardholder" 
-                  resourceId={id} 
-                  showViewing={true} 
-                  showTyping={false} 
-                />
-              </div>
               <div className="flex space-x-3">
-                <button className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center">
+                <button 
+                  onClick={handleEditClick}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center"
+                >
                   <Edit3 className="w-4 h-4 mr-2" />
                   Edit
                 </button>
                 <button 
-                  onClick={() => navigate('/statements/upload')}
+                  onClick={() => navigate(`/statements/upload?cardholder=${id}`)}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center"
                 >
                   <Upload className="w-4 h-4 mr-2" />
@@ -253,11 +321,22 @@ const CardholderDashboard = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Status</p>
-                  <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${getStatusColor(cardholder.status)}`}>
-                    {cardholder.status}
-                  </span>
+                  <div className="flex items-center mt-1">
+                    <div className={`w-2 h-2 rounded-full mr-2 ${
+                      cardholder.status === 'active' ? 'bg-green-500' : 
+                      cardholder.status === 'pending' ? 'bg-yellow-500' : 
+                      'bg-gray-400'
+                    }`}></div>
+                    <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${getStatusColor(cardholder.status)}`}>
+                      {cardholder.status || 'pending'}
+                    </span>
+                  </div>
                 </div>
-                <CheckCircle className="w-8 h-8 text-green-600" />
+                {cardholder.status === 'active' ? (
+                  <CheckCircle className="w-8 h-8 text-green-600" />
+                ) : (
+                  <Clock className="w-8 h-8 text-yellow-600" />
+                )}
               </div>
             </div>
           </div>
@@ -464,7 +543,11 @@ const CardholderDashboard = () => {
                       </div>
                       <h3 className="text-lg font-medium text-gray-900 mb-2">No Bank Cards</h3>
                       <p className="text-gray-600 mb-6">This cardholder doesn't have any bank cards yet.</p>
-                      <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                      <button 
+                        onClick={() => navigate(`/bank-data/add?cardholder=${id}`)}
+                        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center mx-auto"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
                         Add Bank Card
                       </button>
                     </div>
@@ -490,8 +573,9 @@ const CardholderDashboard = () => {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {transactions.map((transaction) => (
-                          <tr key={transaction.id} className="hover:bg-gray-50">
+                        {transactions.length > 0 ? (
+                          transactions.map((transaction) => (
+                            <tr key={transaction.id || transaction._id} className="hover:bg-gray-50">
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                               {new Date(transaction.date).toLocaleDateString()}
                             </td>
@@ -526,7 +610,27 @@ const CardholderDashboard = () => {
                               </button>
                             </td>
                           </tr>
-                        ))}
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan="6" className="px-6 py-12 text-center">
+                              <div className="flex flex-col items-center justify-center">
+                                <BarChart3 className="w-12 h-12 text-gray-400 mb-4" />
+                                <h3 className="text-lg font-medium text-gray-900 mb-2">No Transactions</h3>
+                                <p className="text-gray-600 mb-4">
+                                  No transactions found for this cardholder. Upload statements to see transactions.
+                                </p>
+                                <button
+                                  onClick={() => navigate('/statements/upload')}
+                                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center"
+                                >
+                                  <Upload className="w-4 h-4 mr-2" />
+                                  Upload Statement
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>

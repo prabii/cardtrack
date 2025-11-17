@@ -36,7 +36,13 @@ const Users = () => {
       if (roleFilter) params.append('role', roleFilter);
       if (statusFilter) params.append('status', statusFilter);
 
-      const response = await fetch(`https://cardtrack.onrender.com/api/users?${params}`, {
+      // Use dynamic API URL
+      const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const apiUrl = isDevelopment 
+        ? 'http://localhost:3003/api' 
+        : 'https://cardtrack.onrender.com/api';
+      
+      const response = await fetch(`${apiUrl}/users?${params}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
           'Content-Type': 'application/json'

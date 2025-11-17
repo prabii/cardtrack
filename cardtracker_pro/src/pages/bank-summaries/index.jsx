@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import Header from '../../components/ui/Header';
 import Button from '../../components/ui/Button';
 import { 
   getBankSummary, 
@@ -31,6 +30,7 @@ const BankSummaries = () => {
   const navigate = useNavigate();
   const { bankId, cardholderId } = useParams();
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [summaryData, setSummaryData] = useState(null);
   const [banks, setBanks] = useState([]);
   const [cardholders, setCardholders] = useState([]);
@@ -49,40 +49,74 @@ const BankSummaries = () => {
   const loadData = async () => {
     try {
       setLoading(true);
+      setError('');
       
       if (viewMode === 'bank' && selectedBank) {
         const response = await getBankSummary(selectedBank, filters);
+        console.log('Bank summary response:', response);
         if (response.success) {
           setSummaryData(response.data);
+        } else {
+          console.error('Bank summary failed:', response.message);
+          setSummaryData(null);
+          setError(response.message || 'Failed to load bank summary');
         }
       } else if (viewMode === 'cardholder' && selectedCardholder) {
-        const response = await getCardholderBankSummaries(selectedCardholder, filters);
-        if (response.success) {
-          setSummaryData(response.data);
+        try {
+          const response = await getCardholderBankSummaries(selectedCardholder, filters);
+          console.log('Cardholder bank summaries response:', response);
+          if (response.success) {
+            setSummaryData(response.data);
+          } else {
+            console.error('Cardholder bank summaries failed:', response.message);
+            setSummaryData(null);
+            setError(response.message || 'Failed to load cardholder summaries');
+          }
+        } catch (cardholderError) {
+          console.error('Cardholder summaries error:', cardholderError);
+          setSummaryData(null);
+          setError(cardholderError.response?.data?.message || cardholderError.message || 'Failed to load cardholder summaries');
         }
       } else if (viewMode === 'overall') {
+        console.log('Loading overall summary with filters:', filters);
         const response = await getOverallSummary(filters);
+        console.log('Overall summary response:', response);
         if (response.success) {
           setSummaryData(response.data);
+        } else {
+          console.error('Overall summary failed:', response.message);
+          setSummaryData(null);
+          setError(response.message || 'Failed to load overall summary');
         }
+      } else {
+        // No selection made, set to null
+        setSummaryData(null);
       }
 
       // Load banks and cardholders for dropdowns
-      const [banksRes, cardholdersRes] = await Promise.all([
-        getBanks({ limit: 100 }),
-        getCardholders({ limit: 100 })
-      ]);
+      try {
+        const [banksRes, cardholdersRes] = await Promise.all([
+          getBanks({ limit: 100 }),
+          getCardholders({ limit: 100 })
+        ]);
 
-      if (banksRes.success) {
-        setBanks(banksRes.data);
-      }
+        if (banksRes.success) {
+          setBanks(banksRes.data || []);
+        }
 
-      if (cardholdersRes.success) {
-        setCardholders(cardholdersRes.data);
+        if (cardholdersRes.success) {
+          setCardholders(cardholdersRes.data || []);
+        }
+      } catch (dropdownError) {
+        console.error('Error loading dropdowns:', dropdownError);
+        // Don't set error here, just log it
       }
 
     } catch (error) {
-      console.error('Error loading data:', error);
+      console.error('Error loading bank summaries:', error);
+      console.error('Error details:', error.response?.data || error.message);
+      setSummaryData(null);
+      setError(error.response?.data?.message || error.message || 'Failed to load bank summaries');
     } finally {
       setLoading(false);
     }
@@ -241,6 +275,144 @@ const BankSummaries = () => {
             </div>
           </div>
         </div>
+
+        {/* Transactions Info */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-start">
+            <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" />
+            <div>
+              <h4 className="text-sm font-semibold text-blue-900 mb-1">How to Create Transactions</h4>
+              <p className="text-sm text-blue-800">
+                Transactions are automatically created when you upload and process a statement PDF. 
+                To create transactions:
+              </p>
+              <ol className="text-sm text-blue-800 mt-2 ml-4 list-decimal space-y-1">
+                <li>Go to Statements page and upload a PDF statement</li>
+                <li>Click "Process Statement" button to extract transactions</li>
+                <li>Transactions will be automatically created and categorized</li>
+              </ol>
+              <p className="text-xs text-blue-700 mt-2">
+                Total Transactions: {summary.transactionStats?.totalTransactions || 0}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderCardholderSummary = (cardholderData) => {
+    if (!cardholderData) return null;
+
+    const { cardholder, bankSummaries, overallSummary } = cardholderData;
+
+    return (
+      <div className="space-y-6">
+        {/* Cardholder Header */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">{cardholder?.name || 'Cardholder'}</h2>
+          <p className="text-gray-600">{cardholder?.email}</p>
+          {cardholder?.phone && <p className="text-gray-600">{cardholder.phone}</p>}
+        </div>
+
+        {/* Overall Summary for Cardholder */}
+        {overallSummary && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex items-center">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <CreditCard className="w-6 h-6 text-blue-600" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Total Card Limit</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatAmount(overallSummary.totalCardLimit)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex items-center">
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <TrendingUp className="w-6 h-6 text-green-600" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Available Limit</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatAmount(overallSummary.totalAvailableLimit)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex items-center">
+                <div className="p-2 bg-red-100 rounded-lg">
+                  <TrendingDown className="w-6 h-6 text-red-600" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Total Outstanding</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatAmount(overallSummary.totalOutstandingAmount)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex items-center">
+                <div className="p-2 bg-purple-100 rounded-lg">
+                  <BarChart3 className="w-6 h-6 text-purple-600" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Total Transactions</p>
+                  <p className="text-2xl font-bold text-gray-900">{overallSummary.totalTransactions || 0}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bank Summaries */}
+        {bankSummaries && bankSummaries.length > 0 ? (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Bank Summaries ({bankSummaries.length})</h3>
+            <div className="space-y-4">
+              {bankSummaries.map((bankSummary, index) => {
+                const summary = bankSummary.summary || {};
+                return (
+                  <div key={index} className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-medium text-gray-900">{bankSummary.bank?.bankName || 'Unknown Bank'}</h4>
+                      <span className="text-sm text-gray-500">{bankSummary.bank?.cardNumber || ''}</span>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-600">Card Limit:</span>
+                        <span className="ml-2 font-medium">{formatAmount(summary.cardLimit)}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Outstanding:</span>
+                        <span className="ml-2 font-medium">{formatAmount(summary.outstandingAmount)}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Available:</span>
+                        <span className="ml-2 font-medium">{formatAmount(summary.availableLimit)}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Transactions:</span>
+                        <span className="ml-2 font-medium">{bankSummary.transactions || 0}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="text-center py-8">
+              <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-500">No banks found for this cardholder.</p>
+              <p className="text-sm text-gray-400 mt-2">Add a bank account to see summaries.</p>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -285,7 +457,12 @@ const BankSummaries = () => {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Total Outstanding</p>
-                <p className="text-2xl font-bold text-gray-900">{formatAmount(overallSummary.totalOutstandingAmount)}</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {formatAmount(overallSummary?.totalOutstandingAmount || 0)}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Across {overallSummary?.totalBanks || 0} banks
+                </p>
               </div>
             </div>
           </div>
@@ -341,10 +518,7 @@ const BankSummaries = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      <Header />
-      
-      <main className="pt-16">
-        <div className="max-w-7xl mx-auto px-4 lg:px-6 py-8">
+      <div className="max-w-7xl mx-auto px-4 lg:px-6 py-8">
           {/* Header Section */}
           <div className="mb-8">
             <div className="flex items-center justify-between">
@@ -459,14 +633,38 @@ const BankSummaries = () => {
             </div>
           </div>
 
+          {/* Error Message */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+              <div className="flex items-center">
+                <AlertCircle className="w-5 h-5 text-red-600 mr-2" />
+                <p className="text-red-800">{error}</p>
+              </div>
+            </div>
+          )}
+
           {/* Content */}
           {loading ? (
             <div className="flex justify-center items-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
             </div>
+          ) : error ? (
+            <div className="text-center py-12">
+              <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+              <p className="text-red-600 font-medium mb-2">Error loading data</p>
+              <p className="text-gray-500">{error}</p>
+              <button
+                onClick={loadData}
+                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Retry
+              </button>
+            </div>
           ) : summaryData ? (
             viewMode === 'overall' ? (
               renderOverallSummary(summaryData)
+            ) : viewMode === 'cardholder' ? (
+              renderCardholderSummary(summaryData)
             ) : (
               renderBankSummary(summaryData)
             )
@@ -477,7 +675,6 @@ const BankSummaries = () => {
             </div>
           )}
         </div>
-      </main>
     </div>
   );
 };

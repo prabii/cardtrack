@@ -79,6 +79,13 @@ router.post('/register', [
         gateway_manager: [
           'view_gateways', 'manage_gateways', 'view_bill_payments', 'process_bill_payments',
           'view_reports', 'view_all_data'
+        ],
+        operator: [
+          'view_cardholders', 'edit_cardholders',
+          'view_bill_payments', 'process_bill_payments',
+          'view_transactions', 'verify_transactions',
+          'view_gateways',
+          'view_reports', 'manage_alerts'
         ]
       };
       return permissions[userRole] || permissions.member;
@@ -98,8 +105,10 @@ router.post('/register', [
     // Generate tokens
     const { accessToken, refreshToken } = generateTokens({
       id: newUser._id,
+      userId: newUser._id,
       email: newUser.email,
-      name: newUser.name
+      name: newUser.name,
+      role: newUser.role
     });
 
     res.status(201).json({
@@ -173,8 +182,10 @@ router.post('/login', [
     // Generate tokens
     const { accessToken, refreshToken } = generateTokens({
       id: user._id,
+      userId: user._id,
       email: user.email,
-      name: user.name
+      name: user.name,
+      role: user.role
     });
 
     res.json({
@@ -420,8 +431,10 @@ router.post('/login/admin', [
 
     const { accessToken, refreshToken } = generateTokens({
       id: user._id,
+      userId: user._id,
       email: user.email,
-      name: user.name
+      name: user.name,
+      role: user.role
     });
 
     res.json({
@@ -485,8 +498,10 @@ router.post('/login/manager', [
 
     const { accessToken, refreshToken } = generateTokens({
       id: user._id,
+      userId: user._id,
       email: user.email,
-      name: user.name
+      name: user.name,
+      role: user.role
     });
 
     res.json({
@@ -550,8 +565,10 @@ router.post('/login/gateway', [
 
     const { accessToken, refreshToken } = generateTokens({
       id: user._id,
+      userId: user._id,
       email: user.email,
-      name: user.name
+      name: user.name,
+      role: user.role
     });
 
     res.json({
@@ -600,6 +617,13 @@ router.post('/fix-permissions', async (req, res) => {
         gateway_manager: [
           'view_gateways', 'manage_gateways', 'view_bill_payments', 'process_bill_payments',
           'view_reports', 'view_all_data'
+        ],
+        operator: [
+          'view_cardholders', 'edit_cardholders',
+          'view_bill_payments', 'process_bill_payments',
+          'view_transactions', 'verify_transactions',
+          'view_gateways',
+          'view_reports', 'manage_alerts'
         ]
       };
       return permissions[userRole] || permissions.member;
@@ -655,6 +679,13 @@ router.post('/refresh-permissions', verifyToken, async (req, res) => {
         gateway_manager: [
           'view_gateways', 'manage_gateways', 'view_bill_payments', 'process_bill_payments',
           'view_reports', 'view_all_data'
+        ],
+        operator: [
+          'view_cardholders', 'edit_cardholders',
+          'view_bill_payments', 'process_bill_payments',
+          'view_transactions', 'verify_transactions',
+          'view_gateways',
+          'view_reports', 'manage_alerts'
         ]
       };
       return permissions[userRole] || permissions.member;

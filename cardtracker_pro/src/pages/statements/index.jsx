@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../../components/ui/Header';
 import Button from '../../components/ui/Button';
+import { useAuth } from '../../contexts/AuthContext';
 import { 
   getStatements, 
   getStatusColor, 
@@ -31,6 +32,7 @@ import {
 
 const Statements = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [statements, setStatements] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -157,10 +159,13 @@ const Statements = () => {
                 <h1 className="text-4xl font-bold text-gray-900 mb-2">Statements Management</h1>
                 <p className="text-lg text-gray-600">Upload and manage credit card statements</p>
               </div>
-              <Button onClick={handleUploadStatement} className="flex items-center space-x-2">
-                <Plus size={20} />
-                <span>Upload Statement</span>
-              </Button>
+              {/* Only show Upload button for Members, Admin, and Manager (not Operator) */}
+              {user?.role !== 'operator' && (
+                <Button onClick={handleUploadStatement} className="flex items-center space-x-2">
+                  <Plus size={20} />
+                  <span>Upload Statement</span>
+                </Button>
+              )}
             </div>
           </div>
 

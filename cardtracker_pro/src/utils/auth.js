@@ -156,7 +156,8 @@ export const isAuthenticated = () => {
   if (storedUser) {
     try {
       const user = JSON.parse(storedUser);
-      return user && user.id && user.email;
+      // Check for both _id and id (Mongoose may return either)
+      return user && (user.id || user._id) && user.email;
     } catch (e) {
       console.error('Error parsing stored user:', e);
     }

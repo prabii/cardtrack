@@ -21,7 +21,7 @@ router.get('/', verifyToken, async (req, res) => {
       endDate,
       page = 1,
       limit = 20,
-      sortBy = 'transactionDate',
+      sortBy = 'date',
       sortOrder = 'desc'
     } = req.query;
 
@@ -32,13 +32,12 @@ router.get('/', verifyToken, async (req, res) => {
     if (statement) filter.statement = statement;
     if (category) filter.category = category;
     if (status) filter.status = status;
-    if (verified !== undefined) filter['verification.isVerified'] = verified === 'true';
-    if (classified !== undefined) filter['classification.isClassified'] = classified === 'true';
+    if (verified !== undefined) filter.verified = verified === 'true';
     
     if (startDate || endDate) {
-      filter.transactionDate = {};
-      if (startDate) filter.transactionDate.$gte = new Date(startDate);
-      if (endDate) filter.transactionDate.$lte = new Date(endDate);
+      filter.date = {};
+      if (startDate) filter.date.$gte = new Date(startDate);
+      if (endDate) filter.date.$lte = new Date(endDate);
     }
 
     // Calculate pagination
@@ -49,11 +48,9 @@ router.get('/', verifyToken, async (req, res) => {
     sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
     const transactions = await Transaction.find(filter)
-      .populate('bank', 'bankName cardNumber cardType')
       .populate('cardholder', 'name email phone')
       .populate('statement', 'month year')
-      .populate('verification.verifiedBy', 'name email')
-      .populate('classification.classifiedBy', 'name email')
+      .populate('verifiedBy', 'name email')
       .sort(sort)
       .skip(skip)
       .limit(parseInt(limit));
@@ -69,10 +66,7 @@ router.get('/', verifyToken, async (req, res) => {
           totalTransactions: { $sum: 1 },
           totalAmount: { $sum: '$amount' },
           verifiedCount: {
-            $sum: { $cond: ['$verification.isVerified', 1, 0] }
-          },
-          classifiedCount: {
-            $sum: { $cond: ['$classification.isClassified', 1, 0] }
+            $sum: { $cond: ['$verified', 1, 0] }
           }
         }
       }
@@ -90,8 +84,7 @@ router.get('/', verifyToken, async (req, res) => {
       stats: stats[0] || {
         totalTransactions: 0,
         totalAmount: 0,
-        verifiedCount: 0,
-        classifiedCount: 0
+        verifiedCount: 0
       }
     });
   } catch (error) {
@@ -109,11 +102,9 @@ router.get('/', verifyToken, async (req, res) => {
 router.get('/:id', verifyToken, async (req, res) => {
   try {
     const transaction = await Transaction.findById(req.params.id)
-      .populate('bank', 'bankName cardNumber cardType')
       .populate('cardholder', 'name email phone address')
       .populate('statement', 'month year timePeriod')
-      .populate('verification.verifiedBy', 'name email')
-      .populate('classification.classifiedBy', 'name email');
+      .populate('verifiedBy', 'name email');
 
     if (!transaction) {
       return res.status(404).json({
@@ -150,15 +141,13 @@ router.put('/:id/verify', verifyToken, async (req, res) => {
       });
     }
 
-    await transaction.verifyTransaction(req.user.id, notes);
-
-    // Update bank summary
-    const bank = await Bank.findById(transaction.bank);
-    if (bank) {
-      await bank.addTransaction(transaction.amount, transaction.category);
+    await transaction.verify(req.user.id);
+    if (notes) {
+      transaction.notes = notes;
+      await transaction.save();
     }
 
-    await transaction.populate('verification.verifiedBy', 'name email');
+    await transaction.populate('verifiedBy', 'name email');
 
     res.json({
       success: true,
@@ -190,7 +179,7 @@ router.put('/:id/reject', verifyToken, async (req, res) => {
     }
 
     await transaction.rejectTransaction(req.user.id, notes);
-    await transaction.populate('verification.verifiedBy', 'name email');
+    await transaction.populate('verifiedBy', 'name email');
 
     res.json({
       success: true,
@@ -211,7 +200,13 @@ router.put('/:id/reject', verifyToken, async (req, res) => {
 // @access  Private
 router.put('/:id/classify', verifyToken, async (req, res) => {
   try {
-    const { category, confidence = 0, notes = '' } = req.body;
+    const { 
+      category, 
+      orderSubcategory, 
+      payoutReceived, 
+      payoutAmount,
+      notes = '' 
+    } = req.body;
 
     if (!category) {
       return res.status(400).json({
@@ -228,8 +223,33 @@ router.put('/:id/classify', verifyToken, async (req, res) => {
       });
     }
 
-    await transaction.classifyTransaction(req.user.id, category, confidence, notes);
-    await transaction.populate('classification.classifiedBy', 'name email');
+    // Update category
+    transaction.category = category;
+    
+    // Update order subcategory if category is orders
+    if (category === 'orders') {
+      if (orderSubcategory) {
+        transaction.orderSubcategory = orderSubcategory;
+      }
+      if (payoutReceived !== undefined) {
+        transaction.payoutReceived = payoutReceived;
+      }
+      if (payoutAmount !== undefined) {
+        transaction.payoutAmount = payoutAmount;
+      }
+    } else {
+      // Clear order-specific fields if category is not orders
+      transaction.orderSubcategory = null;
+      transaction.payoutReceived = false;
+      transaction.payoutAmount = 0;
+    }
+
+    if (notes) {
+      transaction.notes = notes;
+    }
+
+    await transaction.save();
+    await transaction.populate('verifiedBy', 'name email');
 
     res.json({
       success: true,
@@ -285,10 +305,9 @@ router.put('/:id', verifyToken, async (req, res) => {
       description,
       amount,
       category,
-      subcategory,
-      merchant,
-      location,
-      tags,
+      orderSubcategory,
+      payoutReceived,
+      payoutAmount,
       notes
     } = req.body;
 
@@ -303,15 +322,28 @@ router.put('/:id', verifyToken, async (req, res) => {
     // Update fields
     if (description) transaction.description = description;
     if (amount !== undefined) transaction.amount = amount;
-    if (category) transaction.category = category;
-    if (subcategory !== undefined) transaction.subcategory = subcategory;
-    if (merchant !== undefined) transaction.merchant = merchant;
-    if (location !== undefined) transaction.location = location;
-    if (tags) transaction.tags = tags;
+    if (category) {
+      transaction.category = category;
+      // If category is not orders, clear order-specific fields
+      if (category !== 'orders') {
+        transaction.orderSubcategory = null;
+        transaction.payoutReceived = false;
+        transaction.payoutAmount = 0;
+      }
+    }
+    if (orderSubcategory !== undefined && transaction.category === 'orders') {
+      transaction.orderSubcategory = orderSubcategory;
+    }
+    if (payoutReceived !== undefined && transaction.category === 'orders') {
+      transaction.payoutReceived = payoutReceived;
+    }
+    if (payoutAmount !== undefined && transaction.category === 'orders') {
+      transaction.payoutAmount = payoutAmount;
+    }
     if (notes !== undefined) transaction.notes = notes;
 
     await transaction.save();
-    await transaction.populate('bank cardholder statement');
+    await transaction.populate('cardholder statement verifiedBy');
 
     res.json({
       success: true,
@@ -374,7 +406,11 @@ router.post('/bulk-verify', verifyToken, async (req, res) => {
       try {
         const transaction = await Transaction.findById(transactionId);
         if (transaction) {
-          await transaction.verifyTransaction(req.user.id, notes);
+          await transaction.verify(req.user.id);
+    if (notes) {
+      transaction.notes = notes;
+      await transaction.save();
+    }
           results.push({ id: transactionId, success: true });
         } else {
           results.push({ id: transactionId, success: false, error: 'Transaction not found' });
@@ -424,7 +460,9 @@ router.post('/bulk-classify', verifyToken, async (req, res) => {
       try {
         const transaction = await Transaction.findById(transactionId);
         if (transaction) {
-          await transaction.classifyTransaction(req.user.id, category, confidence, notes);
+          transaction.category = category;
+          if (notes) transaction.notes = notes;
+          await transaction.save();
           results.push({ id: transactionId, success: true });
         } else {
           results.push({ id: transactionId, success: false, error: 'Transaction not found' });
@@ -459,9 +497,9 @@ router.get('/stats/verification', verifyToken, async (req, res) => {
     if (cardholder) matchStage.cardholder = cardholder;
     if (bank) matchStage.bank = bank;
     if (startDate || endDate) {
-      matchStage.transactionDate = {};
-      if (startDate) matchStage.transactionDate.$gte = new Date(startDate);
-      if (endDate) matchStage.transactionDate.$lte = new Date(endDate);
+      matchStage.date = {};
+      if (startDate) matchStage.date.$gte = new Date(startDate);
+      if (endDate) matchStage.date.$lte = new Date(endDate);
     }
 
     const stats = await Transaction.aggregate([
@@ -469,8 +507,7 @@ router.get('/stats/verification', verifyToken, async (req, res) => {
       {
         $group: {
           _id: {
-            verified: '$verification.isVerified',
-            status: '$status'
+            verified: '$verified'
           },
           count: { $sum: 1 },
           totalAmount: { $sum: '$amount' }
@@ -479,13 +516,8 @@ router.get('/stats/verification', verifyToken, async (req, res) => {
       {
         $group: {
           _id: '$_id.verified',
-          statuses: {
-            $push: {
-              status: '$_id.status',
-              count: '$count',
-              totalAmount: '$totalAmount'
-            }
-          }
+          count: { $sum: '$count' },
+          totalAmount: { $sum: '$totalAmount' }
         }
       }
     ]);

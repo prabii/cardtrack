@@ -1,8 +1,13 @@
 import axios from 'axios';
 import { getAccessToken, clearTokens } from './auth';
 
-// API base URL
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://cardtrack.onrender.com/api';
+// API base URL - Dynamic based on environment
+const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const defaultApiUrl = isDevelopment 
+  ? 'http://localhost:3003/api' 
+  : 'https://cardtrack.onrender.com/api';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || defaultApiUrl;
 
 // Create axios instance
 const api = axios.create({

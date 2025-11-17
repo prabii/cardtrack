@@ -8,7 +8,9 @@ import {
   formatFileSize,
   downloadStatement,
   downloadFileFromBlob,
-  deleteStatement
+  deleteStatement,
+  processStatement,
+  reprocessStatement
 } from '../../utils/statementApi';
 import { 
   FileText, 
@@ -34,6 +36,7 @@ const StatementDetail = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Load statement data from API
   useEffect(() => {
@@ -80,11 +83,29 @@ const StatementDetail = () => {
 
   const handleDownloadStatement = async () => {
     try {
+      if (!statement._id) {
+        alert('Statement ID is missing');
+        return;
+      }
+      
+      if (!statement.fileName) {
+        alert('File name is missing');
+        return;
+      }
+      
+      console.log('Downloading statement:', statement._id, statement.fileName);
       const blob = await downloadStatement(statement._id);
+      
+      if (!blob || blob.size === 0) {
+        alert('Downloaded file is empty');
+        return;
+      }
+      
       downloadFileFromBlob(blob, statement.fileName);
     } catch (error) {
       console.error('Error downloading statement:', error);
-      alert('Failed to download statement');
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to download statement';
+      alert(`Failed to download statement: ${errorMessage}`);
     }
   };
 
@@ -106,6 +127,39 @@ const StatementDetail = () => {
 
   const handleBack = () => {
     navigate('/statements');
+  };
+
+  const handleProcessStatement = async () => {
+    if (!statement) {
+      setError('Statement data not loaded');
+      return;
+    }
+    
+    const statementId = statement._id || statement.id || id;
+    if (!statementId) {
+      setError('Statement ID is missing');
+      return;
+    }
+    
+    if (window.confirm('Process this statement to extract transactions and account data from the PDF?')) {
+      try {
+        setIsProcessing(true);
+        setError('');
+        console.log('Processing statement with ID:', statementId);
+        const response = await processStatement(statementId);
+        if (response.success) {
+          alert(`Statement processed successfully! Found ${response.transactions || 0} transactions.`);
+          loadStatement(); // Reload to show updated data
+        } else {
+          setError(response.message || 'Failed to process statement');
+        }
+      } catch (error) {
+        console.error('Error processing statement:', error);
+        setError(error.response?.data?.message || error.message || 'Failed to process statement');
+      } finally {
+        setIsProcessing(false);
+      }
+    }
   };
 
   if (isLoading) {
@@ -179,6 +233,20 @@ const StatementDetail = () => {
                 </div>
               </div>
               <div className="flex space-x-3">
+                {(statement.status === 'uploaded' || statement.status === 'failed') && (
+                  <Button 
+                    onClick={handleProcessStatement}
+                    className="flex items-center bg-green-600 hover:bg-green-700 text-white"
+                    disabled={isProcessing}
+                  >
+                    {isProcessing ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    ) : (
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                    )}
+                    {statement.status === 'failed' ? 'Reprocess' : 'Process Statement'}
+                  </Button>
+                )}
                 <Button 
                   onClick={handleDownloadStatement}
                   variant="outline"
@@ -278,8 +346,10 @@ const StatementDetail = () => {
                     <div className="flex items-center">
                       <FileText className="w-8 h-8 text-blue-600 mr-3" />
                       <div>
-                        <p className="font-medium text-gray-900">{statement.fileName}</p>
-                        <p className="text-sm text-gray-500">{formatFileSize(statement.fileSize)}</p>
+                        <p className="font-medium text-gray-900">{statement.fileName || 'Unknown file'}</p>
+                        <p className="text-sm text-gray-500">
+                          {statement.fileSize ? formatFileSize(statement.fileSize) : 'Size unknown'}
+                        </p>
                       </div>
                     </div>
                     <Button 

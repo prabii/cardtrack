@@ -1,7 +1,8 @@
-// const PDFProcessor = require('./pdfProcessor');
+const PDFProcessor = require('./pdfProcessor');
 const Statement = require('../models/Statement');
 const Transaction = require('../models/Transaction');
 const Cardholder = require('../models/Cardholder');
+const Bank = require('../models/Bank');
 
 /**
  * Statement Processing Service
@@ -16,19 +17,29 @@ class StatementProcessor {
    */
   static async processStatement(statementId, userId) {
     try {
-      console.log(`Starting processing for statement: ${statementId}`);
+      console.log(`Starting processing for statement: ${statementId}, userId: ${userId}`);
+      
+      // Validate statement ID
+      if (!statementId || statementId === 'undefined' || statementId === 'null') {
+        throw new Error('Invalid statement ID: ' + statementId);
+      }
+      
+      // Validate user ID
+      if (!userId || userId === 'undefined' || userId === 'null') {
+        throw new Error('Invalid user ID: ' + userId);
+      }
       
       // Get statement
       const statement = await Statement.findById(statementId);
       if (!statement) {
-        throw new Error('Statement not found');
+        throw new Error(`Statement not found with ID: ${statementId}`);
       }
 
       // Update status to processing
       await statement.updateStatus('processing', userId);
       console.log('Status updated to processing');
 
-      // Process PDF (temporarily disabled)
+      // Process PDF
       const metadata = {
         cardholder: statement.cardholder,
         month: statement.month,
@@ -37,34 +48,114 @@ class StatementProcessor {
         cardNumber: statement.cardNumber
       };
 
-      // TODO: Implement PDF processing
-      const parsedData = {
-        transactions: [],
-        summary: {
-          totalTransactions: 0,
-          totalAmount: 0,
-          cardLimit: 0,
-          availableLimit: 0,
-          outstandingAmount: 0,
-          minimumPayment: 0,
-          dueDate: null
-        }
-      };
-      console.log('PDF processing temporarily disabled');
+      console.log('Processing PDF file:', statement.filePath);
+      
+      let parsedData;
+      try {
+        parsedData = await PDFProcessor.processPDF(statement.filePath, metadata);
+      } catch (pdfError) {
+        console.error('PDF processing error:', pdfError);
+        // Update statement status to failed with error message
+        statement.status = 'failed';
+        statement.processingError = pdfError.message || 'Failed to process PDF';
+        await statement.save();
+        throw new Error(`PDF processing failed: ${pdfError.message}`);
+      }
+      console.log('PDF processed successfully:', {
+        transactions: parsedData.transactions.length,
+        cardLimit: parsedData.summary.cardLimit,
+        outstandingAmount: parsedData.summary.outstandingAmount
+      });
+      console.log('Sample transactions:', parsedData.transactions.slice(0, 3));
+      
+      if (!parsedData.transactions || parsedData.transactions.length === 0) {
+        console.warn('⚠️ WARNING: No transactions extracted from PDF!');
+        console.log('Parsed data keys:', Object.keys(parsedData));
+        console.log('Summary data:', parsedData.summary);
+      }
 
       // Update statement with extracted data
+      // Use actual transaction count from parsedData.transactions, not summary
+      const actualTransactionCount = parsedData.transactions ? parsedData.transactions.length : 0;
+      const actualTotalAmount = parsedData.transactions ? 
+        parsedData.transactions.reduce((sum, t) => sum + (t.amount || 0), 0) : 0;
+      
       statement.extractedData = {
-        totalTransactions: parsedData.summary.totalTransactions,
-        totalAmount: parsedData.summary.totalAmount,
+        totalTransactions: actualTransactionCount,
+        totalAmount: actualTotalAmount,
         cardLimit: parsedData.summary.cardLimit,
         availableLimit: parsedData.summary.availableLimit,
         outstandingAmount: parsedData.summary.outstandingAmount,
         minimumPayment: parsedData.summary.minimumPayment,
         dueDate: parsedData.summary.dueDate
       };
+      
+      console.log(`Statement extractedData updated: ${actualTransactionCount} transactions, $${actualTotalAmount} total`);
 
       await statement.save();
       console.log('Statement data updated');
+
+      // Update Bank's outstanding amount, card limit, and available limit from statement
+      if (statement.bankName && statement.cardNumber) {
+        try {
+          // Try to find bank by exact match first
+          let bank = await Bank.findOne({
+            cardholder: statement.cardholder,
+            bankName: statement.bankName,
+            cardNumber: statement.cardNumber,
+            isDeleted: false
+          });
+
+          // If not found, try matching by bankName and last 4 digits
+          if (!bank && statement.cardDigits) {
+            bank = await Bank.findOne({
+              cardholder: statement.cardholder,
+              bankName: statement.bankName,
+              $expr: {
+                $eq: [
+                  { $substr: ['$cardNumber', -4, 4] },
+                  statement.cardDigits
+                ]
+              },
+              isDeleted: false
+            });
+          }
+
+          // If still not found, try just by bankName and cardholder
+          if (!bank) {
+            bank = await Bank.findOne({
+              cardholder: statement.cardholder,
+              bankName: statement.bankName,
+              isDeleted: false
+            });
+          }
+
+          if (bank) {
+            // Update bank with latest statement data
+            if (parsedData.summary.outstandingAmount !== undefined && parsedData.summary.outstandingAmount !== null) {
+              bank.outstandingAmount = parsedData.summary.outstandingAmount;
+              console.log(`Updated bank ${bank.bankName} outstanding amount to: ${bank.outstandingAmount}`);
+            }
+            if (parsedData.summary.cardLimit !== undefined && parsedData.summary.cardLimit !== null) {
+              bank.cardLimit = parsedData.summary.cardLimit;
+            }
+            if (parsedData.summary.availableLimit !== undefined && parsedData.summary.availableLimit !== null) {
+              bank.availableLimit = parsedData.summary.availableLimit;
+            }
+            await bank.save();
+            console.log(`Bank ${bank.bankName} updated successfully. Outstanding: ${bank.outstandingAmount}, Limit: ${bank.cardLimit}`);
+          } else {
+            console.warn(`⚠️ Bank not found for cardholder ${statement.cardholder}, bank ${statement.bankName}, card ${statement.cardNumber || statement.cardDigits}`);
+            console.warn('Statement processed but bank outstanding amount was not updated. Please ensure the bank account exists.');
+          }
+        } catch (bankError) {
+          console.error('Error updating bank:', bankError);
+          console.error('Bank update error stack:', bankError.stack);
+          // Don't fail the whole process if bank update fails
+        }
+      } else {
+        console.warn('⚠️ Statement missing bankName or cardNumber, cannot update bank outstanding amount');
+      }
 
       // Create transaction records
       const transactions = await this.createTransactions(statementId, parsedData.transactions);
@@ -108,28 +199,66 @@ class StatementProcessor {
    */
   static async createTransactions(statementId, transactions) {
     const createdTransactions = [];
+    
+    console.log(`Creating transactions for statement ${statementId}, count: ${transactions.length}`);
+    
+    if (!transactions || transactions.length === 0) {
+      console.warn('⚠️ No transactions to create!');
+      return createdTransactions;
+    }
+    
+    // Get statement to access cardholder
+    const statement = await Statement.findById(statementId);
+    if (!statement) {
+      throw new Error('Statement not found');
+    }
 
-    for (const transactionData of transactions) {
+    if (!statement.cardholder) {
+      throw new Error('Statement missing cardholder reference');
+    }
+
+    console.log(`Statement cardholder: ${statement.cardholder}`);
+
+    for (let i = 0; i < transactions.length; i++) {
+      const transactionData = transactions[i];
       try {
+        // Validate transaction data
+        if (!transactionData.date) {
+          console.warn(`Transaction ${i} missing date:`, transactionData);
+          continue;
+        }
+        if (!transactionData.description) {
+          console.warn(`Transaction ${i} missing description:`, transactionData);
+          continue;
+        }
+        if (!transactionData.amount || isNaN(transactionData.amount)) {
+          console.warn(`Transaction ${i} missing or invalid amount:`, transactionData);
+          continue;
+        }
+
         const transaction = new Transaction({
           statement: statementId,
-          cardholder: transactionData.cardholder || statementId.cardholder,
+          cardholder: statement.cardholder,
           date: transactionData.date,
-          description: transactionData.description,
-          amount: transactionData.amount,
-          balance: transactionData.balance,
-          category: transactionData.category,
+          description: transactionData.description.trim(),
+          amount: Math.abs(parseFloat(transactionData.amount)), // Ensure positive amount
+          balance: transactionData.balance ? parseFloat(transactionData.balance) : null,
+          category: transactionData.category || 'unclassified',
           verified: false
         });
 
         const savedTransaction = await transaction.save();
         createdTransactions.push(savedTransaction);
+        console.log(`✓ Created transaction ${i + 1}/${transactions.length}: ${savedTransaction.description} - $${savedTransaction.amount}`);
       } catch (error) {
-        console.error('Error creating transaction:', error);
+        console.error(`✗ Error creating transaction ${i + 1}:`, error.message);
+        console.error('Transaction data:', JSON.stringify(transactionData, null, 2));
+        console.error('Error stack:', error.stack);
         // Continue with other transactions
       }
     }
 
+    console.log(`Successfully created ${createdTransactions.length} out of ${transactions.length} transactions`);
     return createdTransactions;
   }
 

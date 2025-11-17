@@ -273,6 +273,13 @@ router.put('/:id/role', requireAdmin, [
         gateway_manager: [
           'view_gateways', 'manage_gateways', 'view_bill_payments', 'process_bill_payments',
           'view_reports', 'view_all_data'
+        ],
+        operator: [
+          'view_cardholders', 'edit_cardholders',
+          'view_bill_payments', 'process_bill_payments',
+          'view_transactions', 'verify_transactions',
+          'view_gateways',
+          'view_reports', 'manage_alerts'
         ]
       };
       return permissionMap[userRole] || permissionMap.member;

@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { body, validationResult } = require('express-validator');
 const BillPayment = require('../models/BillPayment');
 const Bank = require('../models/Bank');
 const Cardholder = require('../models/Cardholder');
@@ -94,8 +95,16 @@ router.get('/', verifyToken, async (req, res) => {
 
     const total = await BillPayment.countDocuments(filter);
 
-    // Get statistics
-    const stats = await BillPayment.getStatistics(filter);
+    // Get statistics (with error handling)
+    let stats = null;
+    try {
+      const statsResult = await BillPayment.getStatistics(filter);
+      stats = statsResult && statsResult.length > 0 ? statsResult[0] : null;
+    } catch (statsError) {
+      console.error('Error getting statistics:', statsError);
+      // Continue without stats rather than failing the whole request
+      stats = null;
+    }
 
     res.json({
       success: true,
@@ -106,7 +115,7 @@ router.get('/', verifyToken, async (req, res) => {
         total,
         limit: parseInt(limit)
       },
-      stats: stats[0] || {
+      stats: stats || {
         totalRequests: 0,
         pendingRequests: 0,
         inProgressRequests: 0,
@@ -118,9 +127,11 @@ router.get('/', verifyToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching bill payments:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({
       success: false,
-      message: 'Server error while fetching bill payments'
+      message: error.message || 'Server error while fetching bill payments',
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
@@ -160,10 +171,29 @@ router.get('/:id', verifyToken, async (req, res) => {
 });
 
 // @route   POST /api/bill-payments
-// @desc    Create new bill payment request
-// @access  Private
-router.post('/', verifyToken, async (req, res) => {
+// @desc    Create new bill payment request (Members can raise requests)
+// @access  Private - All authenticated users can create requests
+router.post('/', verifyToken, upload.single('attachment'), [
+  body('cardholder', 'Cardholder ID is required').isMongoId(),
+  body('bank', 'Bank ID is required').isMongoId(),
+  body('requestType', 'Request type is required').isIn(['bill_payment', 'withdrawal', 'transfer', 'purchase']),
+  body('billDetails.billerName', 'Biller name is required').notEmpty().trim(),
+  body('billDetails.billerAccount', 'Biller account is required').notEmpty().trim(),
+  body('billDetails.billerCategory', 'Biller category is required').isIn(['utilities', 'telecom', 'insurance', 'credit_card', 'loan', 'other']),
+  body('paymentDetails.amount', 'Payment amount is required').isFloat({ min: 0.01 }),
+  body('paymentDetails.paymentMethod', 'Payment method is required').isIn(['credit_card', 'debit_card', 'bank_transfer', 'cash']),
+  body('paymentDetails.dueDate', 'Due date is required').isISO8601().toDate()
+], async (req, res) => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
     const {
       cardholder,
       bank,
@@ -174,14 +204,6 @@ router.post('/', verifyToken, async (req, res) => {
       priority,
       estimatedProcessingTime
     } = req.body;
-
-    // Validate required fields
-    if (!cardholder || !bank || !requestType || !billDetails || !paymentDetails) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required fields'
-      });
-    }
 
     // Check if cardholder exists
     const cardholderExists = await Cardholder.findById(cardholder);
@@ -214,6 +236,18 @@ router.post('/', verifyToken, async (req, res) => {
         estimatedProcessingTime: estimatedProcessingTime || 24
       }
     });
+
+    // Handle attachment if uploaded
+    if (req.file) {
+      billPayment.attachments.push({
+        filename: req.file.filename,
+        originalName: req.file.originalname,
+        filePath: req.file.path,
+        fileSize: req.file.size,
+        mimeType: req.file.mimetype,
+        uploadedBy: req.user.id
+      });
+    }
 
     await billPayment.save();
     await billPayment.populate('cardholder bank requestDetails.requestedBy');
@@ -342,6 +376,171 @@ router.put('/:id/complete', verifyToken, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Server error while completing bill payment'
+    });
+  }
+});
+
+// @route   PUT /api/bill-payments/:id/mark-paid
+// @desc    Mark bill payment as paid (Operator action)
+// @access  Private (Operator, Manager, Admin)
+router.put('/:id/mark-paid', verifyToken, [
+  body('gateway', 'Gateway is required').isMongoId(),
+  body('transactionReference').optional().isString().trim(),
+  body('notes').optional().isString().trim()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const { gateway, transactionReference, notes = '' } = req.body;
+
+    // Check if user has permission (operator, manager, or admin)
+    // If role is not in token, fetch user from database
+    let userRole = req.user.role;
+    if (!userRole) {
+      const User = require('../models/User');
+      const user = await User.findById(req.user.id || req.user.userId);
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+      userRole = user.role;
+    }
+    
+    if (!['operator', 'manager', 'admin'].includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only operators, managers, and admins can mark payments as paid'
+      });
+    }
+
+    const mongoose = require('mongoose');
+    const Gateway = require('../models/Gateway');
+    const GatewayTransaction = require('../models/GatewayTransaction');
+
+    // Convert gateway ID to ObjectId (gateway should already be a valid ObjectId string from validation)
+    let gatewayId;
+    try {
+      gatewayId = mongoose.Types.ObjectId.isValid(gateway) ? gateway : new mongoose.Types.ObjectId(gateway);
+    } catch (err) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid gateway ID format'
+      });
+    }
+    const gatewayDoc = await Gateway.findById(gatewayId);
+    if (!gatewayDoc) {
+      return res.status(404).json({
+        success: false,
+        message: 'Gateway not found'
+      });
+    }
+
+    const billPayment = await BillPayment.findById(req.params.id);
+    if (!billPayment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Bill payment not found'
+      });
+    }
+
+    // Get user ID (ensure it's a valid ObjectId)
+    const userId = req.user.id || req.user.userId;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'User ID not found in token'
+      });
+    }
+    
+    // Ensure userId is a valid ObjectId
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID format'
+      });
+    }
+
+    // Mark as paid
+    const paymentResult = {
+      transactionId: transactionReference || `TXN-${Date.now()}`,
+      paymentStatus: 'success', // Valid enum values: 'success', 'failed', 'pending', 'refunded'
+      gateway: gatewayDoc.name,
+      gatewayId: gatewayId.toString(),
+      paidAt: new Date(),
+      paidBy: userId.toString()
+    };
+
+    await billPayment.completeProcessing(paymentResult, notes);
+
+    // Create gateway transaction
+    const gatewayTransaction = new GatewayTransaction({
+      gateway: gatewayId,
+      transactionType: 'bill',
+      amount: billPayment.paymentDetails.amount,
+      currency: billPayment.paymentDetails.currency || 'USD',
+      description: `Bill payment: ${billPayment.billDetails?.billerName || 'Bill Payment'}`,
+      reference: transactionReference || paymentResult.transactionId,
+      billPayment: billPayment._id,
+      cardholder: billPayment.cardholder || null,
+      bank: billPayment.bank || null,
+      status: 'completed',
+      transactionDate: new Date(),
+      completedAt: new Date(),
+      notes: notes || '',
+      createdBy: userId
+    });
+
+    await gatewayTransaction.save();
+
+    await billPayment.populate('cardholder bank requestDetails.requestedBy');
+
+    // Broadcast real-time alert that payment was completed
+    try {
+      const socketService = global.socketService;
+      if (socketService) {
+        socketService.broadcastAlert({
+          id: `payment_completed_${billPayment._id}`,
+          type: 'bill_payment_completed',
+          priority: 'low',
+          title: 'Bill Payment Completed',
+          message: `Payment of ${billPayment.paymentDetails.amount} ${billPayment.paymentDetails.currency} completed`,
+          details: {
+            billPaymentId: billPayment._id,
+            cardholder: billPayment.cardholder,
+            gateway: gatewayDoc.name,
+            amount: billPayment.paymentDetails.amount
+          },
+          roles: ['admin', 'manager', 'operator', 'member']
+        });
+      }
+    } catch (socketError) {
+      console.error('Error broadcasting payment alert:', socketError);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        billPayment,
+        gatewayTransaction
+      },
+      message: 'Bill payment marked as paid successfully'
+    });
+  } catch (error) {
+    console.error('Error marking bill payment as paid:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error while marking bill payment as paid',
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
@@ -561,7 +760,7 @@ router.put('/:id', verifyToken, async (req, res) => {
 
 // @route   DELETE /api/bill-payments/:id
 // @desc    Delete bill payment
-// @access  Private
+// @access  Private (Admin, Manager, Member - only for their own requests)
 router.delete('/:id', verifyToken, async (req, res) => {
   try {
     const billPayment = await BillPayment.findById(req.params.id);
@@ -569,6 +768,18 @@ router.delete('/:id', verifyToken, async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Bill payment not found'
+      });
+    }
+
+    // Check permissions: Admin and Manager can delete any pending request
+    // Members can only delete their own pending requests
+    const isAdminOrManager = ['admin', 'manager'].includes(req.user.role);
+    const isOwner = billPayment.requestDetails?.requestedBy?.toString() === req.user.id;
+
+    if (!isAdminOrManager && !isOwner) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to delete this bill payment'
       });
     }
 

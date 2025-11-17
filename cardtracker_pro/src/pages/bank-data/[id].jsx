@@ -126,22 +126,32 @@ const BankDashboard = () => {
   const handleClassifyTransaction = async (transactionId, classificationData) => {
     try {
       setIsClassifying(true);
-      // TODO: Implement API call to classify transaction
-      console.log('Classifying transaction:', transactionId, classificationData);
       
-      // Update local state
-      setTransactions(prev => prev.map(transaction => 
-        transaction._id === transactionId 
-          ? { 
-              ...transaction, 
-              ...classificationData,
-              classified: true,
-              classifiedAt: new Date().toISOString()
-            }
-          : transaction
-      ));
+      // Import classifyTransaction from API
+      const { classifyTransaction } = await import('../../utils/transactionApi');
+      
+      // Call API to classify transaction
+      const response = await classifyTransaction(transactionId, classificationData);
+      
+      if (response.success) {
+        // Update local state with response data
+        setTransactions(prev => prev.map(transaction => 
+          transaction._id === transactionId 
+            ? { 
+                ...transaction, 
+                ...response.data,
+                category: response.data.category,
+                orderSubcategory: response.data.orderSubcategory,
+                payoutReceived: response.data.payoutReceived,
+                payoutAmount: response.data.payoutAmount,
+                notes: response.data.notes
+              }
+            : transaction
+        ));
+      }
     } catch (error) {
       console.error('Error classifying transaction:', error);
+      alert('Failed to classify transaction: ' + (error.response?.data?.message || error.message));
     } finally {
       setIsClassifying(false);
     }

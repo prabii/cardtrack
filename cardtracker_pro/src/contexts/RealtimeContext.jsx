@@ -20,6 +20,7 @@ export const RealtimeProvider = ({ children }) => {
   const [userActivity, setUserActivity] = useState([]);
   const [typingUsers, setTypingUsers] = useState(new Map());
   const [viewingUsers, setViewingUsers] = useState(new Map());
+  const [editingUsers, setEditingUsers] = useState(new Map());
   const [notifications, setNotifications] = useState([]);
   const { user } = useAuth();
   const reconnectTimeoutRef = useRef(null);
@@ -53,7 +54,13 @@ export const RealtimeProvider = ({ children }) => {
     }
 
     const authToken = getAccessToken();
-    const newSocket = io('https://cardtrack.onrender.com', {
+    // Dynamic socket URL based on environment
+    const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const socketUrl = isDevelopment 
+      ? 'http://localhost:3003' 
+      : 'https://cardtrack.onrender.com';
+    
+    const newSocket = io(socketUrl, {
       auth: {
         token: authToken
       },
@@ -167,9 +174,57 @@ export const RealtimeProvider = ({ children }) => {
       });
     });
 
+    newSocket.on('editing_indicator', (data) => {
+      setEditingUsers(prev => {
+        const newMap = new Map(prev);
+        const key = `${data.resource}_${data.resourceId}`;
+        
+        if (data.isEditing) {
+          // Add or update editing user
+          const current = newMap.get(key) || [];
+          const exists = current.find(u => u.userId === data.userId);
+          if (!exists) {
+            newMap.set(key, [...current, data]);
+          } else {
+            // Update existing entry
+            const updated = current.map(u => 
+              u.userId === data.userId ? data : u
+            );
+            newMap.set(key, updated);
+          }
+        } else {
+          // Remove editing user
+          const current = newMap.get(key) || [];
+          const filtered = current.filter(u => u.userId !== data.userId);
+          if (filtered.length === 0) {
+            newMap.delete(key);
+          } else {
+            newMap.set(key, filtered);
+          }
+        }
+        
+        return newMap;
+      });
+    });
+
     newSocket.on('notification', (data) => {
       console.log('🔔 New notification:', data);
       setNotifications(prev => [data, ...prev.slice(0, 99)]); // Keep last 100 notifications
+    });
+
+    // Listen for real-time alerts
+    newSocket.on('alert', (alertData) => {
+      console.log('🚨 New alert received:', alertData);
+      // Add alert to notifications
+      setNotifications(prev => [{
+        id: alertData.id || Date.now() + Math.random(),
+        type: 'alert',
+        title: alertData.title,
+        message: alertData.message,
+        priority: alertData.priority,
+        details: alertData.details,
+        timestamp: alertData.timestamp || new Date()
+      }, ...prev.slice(0, 99)]);
     });
 
     newSocket.on('error', (error) => {
@@ -213,6 +268,7 @@ export const RealtimeProvider = ({ children }) => {
     setUserActivity([]);
     setTypingUsers(new Map());
     setViewingUsers(new Map());
+    setEditingUsers(new Map());
   };
 
   // Activity tracking functions - All users
@@ -282,6 +338,33 @@ export const RealtimeProvider = ({ children }) => {
     }
   };
 
+  const startEditing = (resource, resourceId) => {
+    if (socket && connected && user) {
+      const now = Date.now();
+      
+      // Throttle editing indicators - only allow one per 5 seconds
+      if (now - lastActivityTime.current < 5000) {
+        return; // Skip if too recent
+      }
+      
+      lastActivityTime.current = now;
+      
+      socket.emit('editing_start', {
+        resource,
+        resourceId
+      });
+    }
+  };
+
+  const stopEditing = (resource, resourceId) => {
+    if (socket && connected && user) {
+      socket.emit('editing_stop', {
+        resource,
+        resourceId
+      });
+    }
+  };
+
   const joinRoom = (roomId) => {
     if (socket && connected) {
       socket.emit('join_room', roomId);
@@ -306,6 +389,11 @@ export const RealtimeProvider = ({ children }) => {
     return viewingUsers.get(key) || [];
   };
 
+  const getEditingUsers = (resource, resourceId) => {
+    const key = `${resource}_${resourceId}`;
+    return editingUsers.get(key) || [];
+  };
+
   const clearNotifications = () => {
     setNotifications([]);
   };
@@ -321,15 +409,19 @@ export const RealtimeProvider = ({ children }) => {
     userActivity,
     typingUsers,
     viewingUsers,
+    editingUsers,
     notifications,
     trackActivity,
     trackViewing,
     startTyping,
     stopTyping,
+    startEditing,
+    stopEditing,
     joinRoom,
     leaveRoom,
     getTypingUsers,
     getViewingUsers,
+    getEditingUsers,
     clearNotifications,
     addNotification
   };

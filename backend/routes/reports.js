@@ -75,6 +75,25 @@ router.get('/dashboard', async (req, res) => {
       { $sort: { totalAmount: -1 } }
     ]);
 
+    // Get order subcategory breakdown (for orders category)
+    const orderSubcategoryBreakdown = await Transaction.aggregate([
+      { $match: { ...dateFilter, category: 'orders' } },
+      {
+        $group: {
+          _id: '$orderSubcategory',
+          count: { $sum: 1 },
+          totalAmount: { $sum: '$amount' },
+          totalPayoutAmount: { $sum: '$payoutAmount' },
+          receivedPayouts: {
+            $sum: {
+              $cond: [{ $eq: ['$payoutReceived', true] }, '$payoutAmount', 0]
+            }
+          }
+        }
+      },
+      { $sort: { totalAmount: -1 } }
+    ]);
+
     // Get monthly trends
     const monthlyTrends = await Transaction.aggregate([
       { $match: dateFilter },
@@ -139,6 +158,7 @@ router.get('/dashboard', async (req, res) => {
           totalTransactions: 0
         },
         categoryBreakdown,
+        orderSubcategoryBreakdown,
         monthlyTrends,
         topCardholders
       }
@@ -386,7 +406,9 @@ router.get('/bill-payments', [
     const billPayments = await BillPayment.find(filter)
       .populate('cardholder', 'name email')
       .populate('bank', 'bankName accountNumber')
-      .populate('operator', 'name email')
+      .populate('requestDetails.requestedBy', 'name email')
+      .populate('processingDetails.assignedTo', 'name email')
+      .populate('verification.verifiedBy', 'name email')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -397,8 +419,8 @@ router.get('/bill-payments', [
       {
         $group: {
           _id: null,
-          totalAmount: { $sum: '$amount' },
-          averageAmount: { $avg: '$amount' },
+          totalAmount: { $sum: '$paymentDetails.amount' },
+          averageAmount: { $avg: '$paymentDetails.amount' },
           count: { $sum: 1 }
         }
       }
@@ -411,7 +433,7 @@ router.get('/bill-payments', [
         $group: {
           _id: '$status',
           count: { $sum: 1 },
-          totalAmount: { $sum: '$amount' }
+          totalAmount: { $sum: '$paymentDetails.amount' }
         }
       },
       { $sort: { count: -1 } }
@@ -422,9 +444,9 @@ router.get('/bill-payments', [
       { $match: filter },
       {
         $group: {
-          _id: '$priority',
+          _id: '$requestDetails.priority',
           count: { $sum: 1 },
-          totalAmount: { $sum: '$amount' }
+          totalAmount: { $sum: '$paymentDetails.amount' }
         }
       },
       { $sort: { count: -1 } }
@@ -505,14 +527,22 @@ router.get('/statements', [
       .skip(skip)
       .limit(parseInt(limit));
 
-    // Get summary statistics
+    // Get summary statistics - use extractedData.totalAmount if available
     const summary = await Statement.aggregate([
-      { $match: filter },
+      { $match: { ...filter, isDeleted: false } },
       {
         $group: {
           _id: null,
-          totalAmount: { $sum: '$totalAmount' },
-          averageAmount: { $avg: '$totalAmount' },
+          totalAmount: { 
+            $sum: { 
+              $ifNull: ['$extractedData.totalAmount', 0] 
+            } 
+          },
+          averageAmount: { 
+            $avg: { 
+              $ifNull: ['$extractedData.totalAmount', 0] 
+            } 
+          },
           count: { $sum: 1 }
         }
       }
@@ -520,7 +550,7 @@ router.get('/statements', [
 
     // Get monthly breakdown
     const monthlyBreakdown = await Statement.aggregate([
-      { $match: filter },
+      { $match: { ...filter, isDeleted: false } },
       {
         $group: {
           _id: {
@@ -528,14 +558,18 @@ router.get('/statements', [
             month: { $month: '$createdAt' }
           },
           count: { $sum: 1 },
-          totalAmount: { $sum: '$totalAmount' }
+          totalAmount: { 
+            $sum: { 
+              $ifNull: ['$extractedData.totalAmount', 0] 
+            } 
+          }
         }
       },
       { $sort: { '_id.year': 1, '_id.month': 1 } }
     ]);
 
     // Get total count
-    const total = await Statement.countDocuments(filter);
+    const total = await Statement.countDocuments({ ...filter, isDeleted: false });
 
     res.json({
       success: true,
@@ -672,5 +706,344 @@ function generateCSV(data) {
 
   return [csvHeaders, ...csvRows].join('\n');
 }
+
+// @route   GET /api/reports/statement-missing
+// @desc    Get cardholders with missing statements
+router.get('/statement-missing', [
+  query('month').optional().isString(),
+  query('year').optional().isInt({ min: 2020, max: 2030 }),
+  query('page').optional().isInt({ min: 1 }),
+  query('limit').optional().isInt({ min: 1, max: 100 })
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const { month, year, page = 1, limit = 10 } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Get all active cardholders
+    const cardholders = await Cardholder.find({ 
+      isDeleted: false,
+      status: { $in: ['active', 'pending'] }
+    }).select('name email phone status');
+
+    // Get all banks for these cardholders
+    const Bank = require('../models/Bank');
+    const banks = await Bank.find({
+      cardholder: { $in: cardholders.map(c => c._id) },
+      isDeleted: false
+    }).select('cardholder bankName cardNumber cardDigits');
+
+    // Build statement query
+    const statementQuery = { isDeleted: false };
+    if (month) statementQuery.month = month;
+    if (year) statementQuery.year = year;
+
+    // Get all statements for the period
+    const statements = await Statement.find(statementQuery)
+      .select('cardholder cardDigits month year');
+
+    // Create a map of cardholder + cardDigits + month + year to check for missing statements
+    const statementMap = new Map();
+    statements.forEach(stmt => {
+      const key = `${stmt.cardholder}_${stmt.cardDigits}_${stmt.month}_${stmt.year}`;
+      statementMap.set(key, true);
+    });
+
+    // Find cardholders with missing statements
+    const missingStatements = [];
+    const currentMonth = month || new Date().toLocaleString('default', { month: 'short' });
+    const currentYear = year || new Date().getFullYear();
+
+    cardholders.forEach(cardholder => {
+      const cardholderBanks = banks.filter(b => b.cardholder.toString() === cardholder._id.toString());
+      
+      if (cardholderBanks.length === 0) {
+        // Cardholder has no banks - add to missing list
+        missingStatements.push({
+          cardholder: {
+            _id: cardholder._id,
+            name: cardholder.name,
+            email: cardholder.email,
+            phone: cardholder.phone,
+            status: cardholder.status
+          },
+          bank: null,
+          cardDigits: null,
+          month: currentMonth,
+          year: currentYear,
+          reason: 'No bank accounts added'
+        });
+      } else {
+        // Check each bank for missing statements
+        cardholderBanks.forEach(bank => {
+          const key = `${cardholder._id}_${bank.cardDigits || '0000'}_${currentMonth}_${currentYear}`;
+          if (!statementMap.has(key)) {
+            missingStatements.push({
+              cardholder: {
+                _id: cardholder._id,
+                name: cardholder.name,
+                email: cardholder.email,
+                phone: cardholder.phone,
+                status: cardholder.status
+              },
+              bank: {
+                _id: bank._id,
+                bankName: bank.bankName,
+                cardNumber: bank.cardNumber,
+                cardDigits: bank.cardDigits
+              },
+              cardDigits: bank.cardDigits || 'N/A',
+              month: currentMonth,
+              year: currentYear,
+              reason: 'Statement not uploaded'
+            });
+          }
+        });
+      }
+    });
+
+    // Apply pagination
+    const paginatedResults = missingStatements.slice(skip, skip + parseInt(limit));
+    const total = missingStatements.length;
+
+    res.json({
+      success: true,
+      data: paginatedResults,
+      pagination: {
+        current: parseInt(page),
+        pages: Math.ceil(total / parseInt(limit)),
+        total,
+        limit: parseInt(limit)
+      },
+      summary: {
+        totalMissing: total,
+        totalCardholders: cardholders.length,
+        totalBanks: banks.length,
+        period: `${currentMonth} ${currentYear}`
+      }
+    });
+  } catch (error) {
+    console.error('Statement missing report error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || 'Server error',
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+// @route   GET /api/reports/tally-required
+// @desc    Get cardholders requiring tally (based on manager-defined dates)
+router.get('/tally-required', [
+  query('tallyDate').optional().isISO8601().toDate(),
+  query('daysBefore').optional().isInt({ min: 0, max: 30 }),
+  query('page').optional().isInt({ min: 1 }),
+  query('limit').optional().isInt({ min: 1, max: 100 })
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const { tallyDate, daysBefore = 7, page = 1, limit = 10 } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Get processed statements that might need tally
+    const statements = await Statement.find({
+      status: 'processed',
+      isDeleted: false
+    })
+      .populate('cardholder', 'name email phone status')
+      .sort({ createdAt: -1 });
+
+    // Check which statements need tally (have transactions but not all verified)
+    const tallyRequired = [];
+    
+    for (const statement of statements) {
+      const transactions = await Transaction.find({
+        statement: statement._id,
+        isDeleted: false
+      });
+      
+      const verifiedCount = transactions.filter(t => t.verified).length;
+      const totalCount = transactions.length;
+      
+      // If there are transactions but not all are verified, tally might be required
+      if (totalCount > 0 && verifiedCount < totalCount) {
+        tallyRequired.push({
+          statement: {
+            _id: statement._id,
+            month: statement.month,
+            year: statement.year,
+            bankName: statement.bankName,
+            cardDigits: statement.cardDigits,
+            createdAt: statement.createdAt
+          },
+          cardholder: statement.cardholder,
+          transactions: {
+            total: totalCount,
+            verified: verifiedCount,
+            unverified: totalCount - verifiedCount
+          },
+          requiresTally: true,
+          reason: `${totalCount - verifiedCount} unverified transactions`
+        });
+      }
+    }
+
+    // Apply pagination
+    const paginatedResults = tallyRequired.slice(skip, skip + parseInt(limit));
+    const total = tallyRequired.length;
+
+    res.json({
+      success: true,
+      data: paginatedResults,
+      pagination: {
+        current: parseInt(page),
+        pages: Math.ceil(total / parseInt(limit)),
+        total,
+        limit: parseInt(limit)
+      },
+      summary: {
+        totalRequiringTally: total,
+        period: tallyDate ? new Date(tallyDate).toLocaleDateString() : 'Current'
+      }
+    });
+  } catch (error) {
+    console.error('Tally required report error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || 'Server error',
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+// @route   GET /api/reports/gateway-transactions
+// @desc    Get enhanced gateway transaction reports
+router.get('/gateway-transactions', [
+  query('gateway').optional().isMongoId(),
+  query('transactionType').optional().isIn(['withdrawal', 'bill', 'transfer', 'deposit']),
+  query('startDate').optional().isISO8601(),
+  query('endDate').optional().isISO8601(),
+  query('page').optional().isInt({ min: 1 }),
+  query('limit').optional().isInt({ min: 1, max: 100 })
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const {
+      gateway,
+      transactionType,
+      startDate,
+      endDate,
+      page = 1,
+      limit = 10
+    } = req.query;
+
+    const GatewayTransaction = require('../models/GatewayTransaction');
+    const Gateway = require('../models/Gateway');
+
+    // Build filter
+    const filter = {};
+    if (gateway) filter.gateway = gateway;
+    if (transactionType) filter.transactionType = transactionType;
+    if (startDate && endDate) {
+      filter.transactionDate = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    const transactions = await GatewayTransaction.find(filter)
+      .populate('gateway', 'name type')
+      .populate('cardholder', 'name email')
+      .populate('bank', 'bankName cardNumber')
+      .populate('billPayment', 'billDetails paymentDetails')
+      .sort({ transactionDate: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await GatewayTransaction.countDocuments(filter);
+
+    // Get summary statistics
+    const summary = await GatewayTransaction.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: '$transactionType',
+          count: { $sum: 1 },
+          totalAmount: { $sum: '$amount' }
+        }
+      }
+    ]);
+
+    // Get gateway summary
+    const gatewaySummary = await GatewayTransaction.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: '$gateway',
+          withdrawals: {
+            $sum: { $cond: [{ $eq: ['$transactionType', 'withdrawal'] }, '$amount', 0] }
+          },
+          bills: {
+            $sum: { $cond: [{ $eq: ['$transactionType', 'bill'] }, '$amount', 0] }
+          },
+          transfers: {
+            $sum: { $cond: [{ $eq: ['$transactionType', 'transfer'] }, '$amount', 0] }
+          },
+          deposits: {
+            $sum: { $cond: [{ $eq: ['$transactionType', 'deposit'] }, '$amount', 0] }
+          }
+        }
+      }
+    ]);
+
+    res.json({
+      success: true,
+      data: transactions,
+      pagination: {
+        current: parseInt(page),
+        pages: Math.ceil(total / parseInt(limit)),
+        total,
+        limit: parseInt(limit)
+      },
+      summary: {
+        byType: summary,
+        byGateway: gatewaySummary
+      }
+    });
+  } catch (error) {
+    console.error('Gateway transactions report error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || 'Server error',
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
 
 module.exports = router;

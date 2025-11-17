@@ -33,6 +33,12 @@ const AddBank = () => {
 
   useEffect(() => {
     loadCardholders();
+    // Check if cardholder is passed via query params
+    const urlParams = new URLSearchParams(window.location.search);
+    const cardholderId = urlParams.get('cardholder');
+    if (cardholderId) {
+      setFormData(prev => ({ ...prev, cardholder: cardholderId }));
+    }
   }, []);
 
   const loadCardholders = async () => {

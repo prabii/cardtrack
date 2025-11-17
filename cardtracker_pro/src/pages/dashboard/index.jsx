@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRealtime } from '../../contexts/RealtimeContext';
-import Header from '../../components/ui/Header';
 import RealtimeDashboard from '../../components/RealtimeDashboard';
 import OverallSummary from '../../components/OverallSummary';
 import DeadlineAlerts from '../../components/DeadlineAlerts';
@@ -164,11 +163,7 @@ const Dashboard = () => {
   }, [onlineUsers, userActivity, activeUsers, recentActivity, user, connected]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      <Header />
-      
-      <main className="pt-16">
-        <div className="max-w-7xl mx-auto px-4 lg:px-6 py-8">
+    <div className="max-w-7xl mx-auto">
           {/* Welcome Section */}
           <div className="mb-8">
             <div className="flex items-center justify-between">
@@ -681,8 +676,6 @@ const Dashboard = () => {
               </div>
             </div>
           )}
-        </div>
-      </main>
     </div>
   );
 };

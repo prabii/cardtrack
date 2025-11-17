@@ -23,7 +23,7 @@ const TransactionClassification = ({
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({
     category: transaction.category || '',
-    subcategory: transaction.subcategory || '',
+    orderSubcategory: transaction.orderSubcategory || '',
     notes: transaction.notes || '',
     payoutReceived: transaction.payoutReceived || false,
     payoutAmount: transaction.payoutAmount || 0
@@ -34,8 +34,20 @@ const TransactionClassification = ({
     { value: 'withdrawals', label: 'Withdrawals', color: 'bg-blue-100 text-blue-800' },
     { value: 'orders', label: 'Orders', color: 'bg-green-100 text-green-800' },
     { value: 'fees', label: 'Fees', color: 'bg-yellow-100 text-yellow-800' },
-    { value: 'personal', label: 'Personal Use', color: 'bg-purple-100 text-purple-800' }
+    { value: 'personal_use', label: 'Personal Use', color: 'bg-purple-100 text-purple-800' }
   ];
+
+  const orderSubcategories = [
+    { value: 'cb_won', label: 'CB Won' },
+    { value: 'ref', label: 'REF' },
+    { value: 'loss', label: 'Loss' },
+    { value: 'running', label: 'Running' }
+  ];
+
+  const getOrderSubcategoryLabel = (value) => {
+    const subcat = orderSubcategories.find(s => s.value === value);
+    return subcat ? subcat.label : value;
+  };
 
   const getCategoryColor = (category) => {
     const cat = categories.find(c => c.value === category);
@@ -78,7 +90,7 @@ const TransactionClassification = ({
   const handleCancel = () => {
     setEditData({
       category: transaction.category || '',
-      subcategory: transaction.subcategory || '',
+      orderSubcategory: transaction.orderSubcategory || '',
       notes: transaction.notes || '',
       payoutReceived: transaction.payoutReceived || false,
       payoutAmount: transaction.payoutAmount || 0
@@ -97,8 +109,13 @@ const TransactionClassification = ({
               {transaction.description || 'Transaction'}
             </h4>
             <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryColor(transaction.category)}`}>
-              {transaction.category ? transaction.category.charAt(0).toUpperCase() + transaction.category.slice(1) : 'Unclassified'}
+              {transaction.category ? transaction.category.charAt(0).toUpperCase() + transaction.category.slice(1).replace('_', ' ') : 'Unclassified'}
             </span>
+            {transaction.category === 'orders' && transaction.orderSubcategory && (
+              <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-200 text-green-900">
+                {getOrderSubcategoryLabel(transaction.orderSubcategory)}
+              </span>
+            )}
           </div>
           
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600">
@@ -209,18 +226,23 @@ const TransactionClassification = ({
               </select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Subcategory
-              </label>
-              <input
-                type="text"
-                value={editData.subcategory}
-                onChange={(e) => setEditData(prev => ({ ...prev, subcategory: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g., Electricity, Groceries, etc."
-              />
-            </div>
+            {editData.category === 'orders' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Order Sub-category *
+                </label>
+                <select
+                  value={editData.orderSubcategory}
+                  onChange={(e) => setEditData(prev => ({ ...prev, orderSubcategory: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Select Sub-category</option>
+                  {orderSubcategories.map(subcat => (
+                    <option key={subcat.value} value={subcat.value}>{subcat.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {editData.category === 'orders' && (
               <>
@@ -278,7 +300,7 @@ const TransactionClassification = ({
             </button>
             <button
               onClick={handleSave}
-              disabled={isClassifying || !editData.category}
+              disabled={isClassifying || !editData.category || (editData.category === 'orders' && !editData.orderSubcategory)}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
             >
               <Save className="w-4 h-4 mr-1" />

@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Header from '../../components/ui/Header';
 import { useAuth } from '../../contexts/AuthContext';
-import { getBillPayment, updateBillPayment, deleteBillPayment, getStatusColor, getPriorityColor, formatCurrency, formatDate, formatDateTime } from '../../utils/billPaymentApi';
+import { getBillPayment, updateBillPayment, deleteBillPayment, markBillPaymentAsPaid, getStatusColor, getPriorityColor, formatCurrency, formatDate, formatDateTime } from '../../utils/billPaymentApi';
+import { getGateways } from '../../utils/gatewayApi';
 import {
   ArrowLeft,
   CreditCard,
@@ -23,7 +24,9 @@ import {
   Upload,
   Eye,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  X,
+  Save
 } from 'lucide-react';
 
 const BillPaymentDetail = () => {
@@ -34,10 +37,20 @@ const BillPaymentDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
+  const [showMarkPaidModal, setShowMarkPaidModal] = useState(false);
+  const [gateways, setGateways] = useState([]);
+  const [markPaidData, setMarkPaidData] = useState({
+    gateway: '',
+    transactionReference: '',
+    notes: ''
+  });
 
   useEffect(() => {
     loadBillPayment();
-  }, [id]);
+    if (['operator', 'manager', 'admin'].includes(user?.role)) {
+      loadGateways();
+    }
+  }, [id, user]);
 
   const loadBillPayment = async () => {
     try {
@@ -88,9 +101,59 @@ const BillPaymentDetail = () => {
     }
   };
 
+  const loadGateways = async () => {
+    try {
+      const response = await getGateways();
+      if (response.success) {
+        setGateways(response.data || []);
+        if (!response.data || response.data.length === 0) {
+          console.warn('No gateways found. Please ensure gateways are seeded in the database.');
+        }
+      } else {
+        console.error('Failed to load gateways:', response.message);
+      }
+    } catch (err) {
+      console.error('Error loading gateways:', err);
+      console.error('Error details:', err.response?.data || err.message);
+    }
+  };
+
   const handleEdit = () => {
     navigate(`/bill-payments/${id}/edit`);
   };
+
+  const handleMarkAsPaid = async () => {
+    if (!markPaidData.gateway) {
+      alert('Please select a payment gateway');
+      return;
+    }
+
+    try {
+      setIsUpdating(true);
+      const response = await markBillPaymentAsPaid(
+        id,
+        markPaidData.gateway,
+        markPaidData.transactionReference,
+        markPaidData.notes
+      );
+
+      if (response.success) {
+        setShowMarkPaidModal(false);
+        setMarkPaidData({ gateway: '', transactionReference: '', notes: '' });
+        loadBillPayment(); // Reload to show updated status
+      } else {
+        alert(response.message || 'Failed to mark payment as paid');
+      }
+    } catch (err) {
+      console.error('Error marking payment as paid:', err);
+      alert(err.response?.data?.message || 'Failed to mark payment as paid');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const canMarkAsPaid = ['operator', 'manager', 'admin'].includes(user?.role) && 
+    ['pending', 'assigned', 'in_progress'].includes(billPayment?.status);
 
   const getStatusIcon = (status) => {
     switch (status) {
@@ -201,21 +264,38 @@ const BillPaymentDetail = () => {
                 </div>
               </div>
               <div className="flex items-center space-x-3">
-                <button
-                  onClick={handleEdit}
-                  className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  <Edit3 size={16} />
-                  <span>Edit</span>
-                </button>
-                <button
-                  onClick={handleDelete}
-                  disabled={isUpdating}
-                  className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
-                >
-                  {isUpdating ? <Loader2 className="animate-spin w-4 h-4" /> : <Trash2 size={16} />}
-                  <span>Delete</span>
-                </button>
+                {canMarkAsPaid && (
+                  <button
+                    onClick={() => {
+                      // Reload gateways when opening modal
+                      loadGateways();
+                      setShowMarkPaidModal(true);
+                    }}
+                    className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    <CheckCircle size={16} />
+                    <span>Mark as Paid</span>
+                  </button>
+                )}
+                {user?.role !== 'operator' && (
+                  <>
+                    <button
+                      onClick={handleEdit}
+                      className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      <Edit3 size={16} />
+                      <span>Edit</span>
+                    </button>
+                    <button
+                      onClick={handleDelete}
+                      disabled={isUpdating}
+                      className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                    >
+                      {isUpdating ? <Loader2 className="animate-spin w-4 h-4" /> : <Trash2 size={16} />}
+                      <span>Delete</span>
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -496,6 +576,103 @@ const BillPaymentDetail = () => {
           </div>
         </div>
       </main>
+
+      {/* Mark as Paid Modal */}
+      {showMarkPaidModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Mark as Paid</h2>
+              <button
+                onClick={() => setShowMarkPaidModal(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Payment Gateway <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={markPaidData.gateway}
+                  onChange={(e) => setMarkPaidData({ ...markPaidData, gateway: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  required
+                  disabled={gateways.length === 0}
+                >
+                  <option value="">
+                    {gateways.length === 0 ? 'No gateways available' : 'Select Gateway'}
+                  </option>
+                  {gateways.map(gateway => (
+                    <option key={gateway._id} value={gateway._id}>{gateway.name}</option>
+                  ))}
+                </select>
+                {gateways.length === 0 && (
+                  <p className="text-sm text-red-600 mt-1">
+                    No gateways found. Please contact administrator to set up payment gateways.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Transaction Reference
+                </label>
+                <input
+                  type="text"
+                  value={markPaidData.transactionReference}
+                  onChange={(e) => setMarkPaidData({ ...markPaidData, transactionReference: e.target.value })}
+                  placeholder="TXN-123456"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Notes
+                </label>
+                <textarea
+                  value={markPaidData.notes}
+                  onChange={(e) => setMarkPaidData({ ...markPaidData, notes: e.target.value })}
+                  placeholder="Payment processing notes..."
+                  rows={3}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3 mt-6">
+              <button
+                onClick={() => setShowMarkPaidModal(false)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                disabled={isUpdating}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleMarkAsPaid}
+                disabled={isUpdating || !markPaidData.gateway}
+                className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isUpdating ? (
+                  <>
+                    <Loader2 className="animate-spin w-4 h-4" />
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle size={16} />
+                    <span>Mark as Paid</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

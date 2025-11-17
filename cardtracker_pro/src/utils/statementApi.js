@@ -122,6 +122,30 @@ export const downloadStatement = async (id) => {
     return response.data;
   } catch (error) {
     console.error('Download statement error:', error);
+    console.error('Error response:', error.response);
+    throw error;
+  }
+};
+
+/**
+ * Download file from blob
+ * @param {Blob} blob - File blob
+ * @param {string} filename - File name
+ */
+export const downloadFileFromBlob = (blob, filename) => {
+  try {
+    // Create a temporary URL for the blob
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename || 'statement.pdf';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    // Clean up the URL after a delay
+    setTimeout(() => window.URL.revokeObjectURL(url), 100);
+  } catch (error) {
+    console.error('Error creating download link:', error);
     throw error;
   }
 };
@@ -136,6 +160,36 @@ export const getOverdueStatements = async () => {
     return response.data;
   } catch (error) {
     console.error('Get overdue statements error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Process statement (extract data from PDF)
+ * @param {string} id - Statement ID
+ * @returns {Promise<Object>} - Processing result
+ */
+export const processStatement = async (id) => {
+  try {
+    const response = await api.post(`/statements/${id}/process`);
+    return response.data;
+  } catch (error) {
+    console.error('Process statement error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Reprocess statement
+ * @param {string} id - Statement ID
+ * @returns {Promise<Object>} - Reprocessing result
+ */
+export const reprocessStatement = async (id) => {
+  try {
+    const response = await api.post(`/statements/${id}/reprocess`);
+    return response.data;
+  } catch (error) {
+    console.error('Reprocess statement error:', error);
     throw error;
   }
 };
@@ -322,21 +376,6 @@ export const formatFileSize = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-/**
- * Download file from blob
- * @param {Blob} blob - File blob
- * @param {string} filename - Filename for download
- */
-export const downloadFileFromBlob = (blob, filename) => {
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  window.URL.revokeObjectURL(url);
-};
 
 export default {
   getStatements,

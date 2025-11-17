@@ -4,6 +4,7 @@ import ScrollToTop from "components/ScrollToTop";
 import ErrorBoundary from "components/ErrorBoundary";
 import ProtectedRoute, { PublicRoute } from "components/ProtectedRoute";
 import RoleBasedRoute from "components/RoleBasedRoute";
+import Layout from "components/Layout";
 import NotFound from "pages/NotFound";
 import Login from './pages/login';
 import Signup from './pages/signup';
@@ -28,13 +29,17 @@ import BankSummaries from './pages/bank-summaries';
 import BankData from './pages/bank-data';
 import BankDashboard from './pages/bank-data/[id]';
 import AddBank from './pages/bank-data/add';
+import EditBank from './pages/bank-data/[id]/edit';
 import BillPayments from './pages/bill-payments';
 import BillPaymentDetail from './pages/bill-payments/[id]';
 import AddBillPayment from './pages/bill-payments/add';
+import EditBillPayment from './pages/bill-payments/[id]/edit';
 import Users from './pages/users/index';
 import Reports from './pages/reports/index';
 import CompanyDashboard from './pages/company/index';
 import CompanyProfits from './pages/company/profits';
+import Gateways from './pages/gateways/index';
+import Alerts from './pages/alerts/index';
 
 const Routes = () => {
   return (
@@ -121,7 +126,11 @@ const Routes = () => {
             path="/dashboard" 
             element={
               <ProtectedRoute>
-                <Dashboard />
+                <RoleBasedRoute allowedRoles={['admin', 'manager', 'member', 'gateway_manager', 'operator']}>
+                  <Layout>
+                    <Dashboard />
+                  </Layout>
+                </RoleBasedRoute>
               </ProtectedRoute>
             } 
           />
@@ -129,7 +138,11 @@ const Routes = () => {
             path="/card-details" 
             element={
               <ProtectedRoute>
-                <CardDetails />
+                <RoleBasedRoute allowedRoles={['admin', 'manager', 'member']}>
+                  <Layout>
+                    <CardDetails />
+                  </Layout>
+                </RoleBasedRoute>
               </ProtectedRoute>
             } 
           />
@@ -137,7 +150,11 @@ const Routes = () => {
             path="/add-credit-card" 
             element={
               <ProtectedRoute>
-                <AddCreditCard />
+                <RoleBasedRoute allowedRoles={['admin', 'manager', 'member']}>
+                  <Layout>
+                    <AddCreditCard />
+                  </Layout>
+                </RoleBasedRoute>
               </ProtectedRoute>
             } 
           />
@@ -145,7 +162,11 @@ const Routes = () => {
             path="/add-transaction" 
             element={
               <ProtectedRoute>
-                <AddTransaction />
+                <RoleBasedRoute allowedRoles={['admin', 'manager', 'member']}>
+                  <Layout>
+                    <AddTransaction />
+                  </Layout>
+                </RoleBasedRoute>
               </ProtectedRoute>
             } 
           />
@@ -153,7 +174,11 @@ const Routes = () => {
             path="/profile" 
             element={
               <ProtectedRoute>
-                <Profile />
+                <RoleBasedRoute allowedRoles={['admin', 'manager', 'member', 'gateway_manager', 'operator']}>
+                  <Layout>
+                    <Profile />
+                  </Layout>
+                </RoleBasedRoute>
               </ProtectedRoute>
             } 
           />
@@ -161,7 +186,11 @@ const Routes = () => {
             path="/cardholders" 
             element={
               <ProtectedRoute>
-                <Cardholders />
+                <RoleBasedRoute allowedRoles={['admin', 'manager', 'member', 'operator']}>
+                  <Layout>
+                    <Cardholders />
+                  </Layout>
+                </RoleBasedRoute>
               </ProtectedRoute>
             } 
           />
@@ -169,7 +198,23 @@ const Routes = () => {
             path="/cardholders/add" 
             element={
               <ProtectedRoute>
-                <AddCardholder />
+                <RoleBasedRoute allowedRoles={['admin', 'manager', 'member']}>
+                  <Layout>
+                    <AddCardholder />
+                  </Layout>
+                </RoleBasedRoute>
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/cardholders/:id/edit" 
+            element={
+              <ProtectedRoute>
+                <RoleBasedRoute allowedRoles={['admin', 'manager', 'member', 'operator']}>
+                  <Layout>
+                    <AddCardholder />
+                  </Layout>
+                </RoleBasedRoute>
               </ProtectedRoute>
             } 
           />
@@ -177,15 +222,11 @@ const Routes = () => {
                    path="/cardholders/:id"
                    element={
                      <ProtectedRoute>
-                       <CardholderDashboard />
-                     </ProtectedRoute>
-                   }
-                 />
-                 <Route
-                   path="/cardholders/:id/edit"
-                   element={
-                     <ProtectedRoute>
-                       <AddCardholder />
+                       <RoleBasedRoute allowedRoles={['admin', 'manager', 'member', 'operator']}>
+                         <Layout>
+                           <CardholderDashboard />
+                         </Layout>
+                       </RoleBasedRoute>
                      </ProtectedRoute>
                    }
                  />
@@ -193,7 +234,11 @@ const Routes = () => {
                    path="/statements"
                    element={
                      <ProtectedRoute>
-                       <Statements />
+                       <RoleBasedRoute allowedRoles={['admin', 'manager', 'member']}>
+                         <Layout>
+                           <Statements />
+                         </Layout>
+                       </RoleBasedRoute>
                      </ProtectedRoute>
                    }
                  />
@@ -201,7 +246,11 @@ const Routes = () => {
                    path="/statements/:id"
                    element={
                      <ProtectedRoute>
-                       <StatementDetail />
+                       <RoleBasedRoute allowedRoles={['admin', 'manager', 'member']}>
+                         <Layout>
+                           <StatementDetail />
+                         </Layout>
+                       </RoleBasedRoute>
                      </ProtectedRoute>
                    }
                  />
@@ -210,7 +259,9 @@ const Routes = () => {
                    element={
                      <ProtectedRoute>
                        <RoleBasedRoute allowedRoles={['admin', 'manager', 'member']}>
-                         <UploadStatement />
+                         <Layout>
+                           <UploadStatement />
+                         </Layout>
                        </RoleBasedRoute>
                      </ProtectedRoute>
                    }
@@ -219,7 +270,11 @@ const Routes = () => {
                    path="/bill-payments"
                    element={
                      <ProtectedRoute>
-                       <BillPayments />
+                       <RoleBasedRoute allowedRoles={['admin', 'manager', 'member', 'gateway_manager', 'operator']}>
+                         <Layout>
+                           <BillPayments />
+                         </Layout>
+                       </RoleBasedRoute>
                      </ProtectedRoute>
                    }
                  />
@@ -227,7 +282,23 @@ const Routes = () => {
                    path="/bill-payments/:id"
                    element={
                      <ProtectedRoute>
-                       <BillPaymentDetail />
+                       <RoleBasedRoute allowedRoles={['admin', 'manager', 'member', 'gateway_manager', 'operator']}>
+                         <Layout>
+                           <BillPaymentDetail />
+                         </Layout>
+                       </RoleBasedRoute>
+                     </ProtectedRoute>
+                   }
+                 />
+                 <Route
+                   path="/bill-payments/:id/edit"
+                   element={
+                     <ProtectedRoute>
+                       <RoleBasedRoute allowedRoles={['admin', 'manager', 'member']}>
+                         <Layout>
+                           <EditBillPayment />
+                         </Layout>
+                       </RoleBasedRoute>
                      </ProtectedRoute>
                    }
                  />
@@ -235,7 +306,11 @@ const Routes = () => {
                    path="/bill-payments/add"
                    element={
                      <ProtectedRoute>
-                       <AddBillPayment />
+                       <RoleBasedRoute allowedRoles={['admin', 'manager', 'member']}>
+                         <Layout>
+                           <AddBillPayment />
+                         </Layout>
+                       </RoleBasedRoute>
                      </ProtectedRoute>
                    }
                  />
@@ -243,8 +318,10 @@ const Routes = () => {
                    path="/transactions"
                    element={
                      <ProtectedRoute>
-                       <RoleBasedRoute allowedRoles={['admin', 'manager', 'gateway_manager']}>
-                         <Transactions />
+                       <RoleBasedRoute allowedRoles={['admin', 'manager', 'gateway_manager', 'operator']}>
+                         <Layout>
+                           <Transactions />
+                         </Layout>
                        </RoleBasedRoute>
                      </ProtectedRoute>
                    }
@@ -254,7 +331,9 @@ const Routes = () => {
                    element={
                      <ProtectedRoute>
                        <RoleBasedRoute allowedRoles={['admin', 'manager', 'gateway_manager']}>
-                         <BankSummaries />
+                         <Layout>
+                           <BankSummaries />
+                         </Layout>
                        </RoleBasedRoute>
                      </ProtectedRoute>
                    }
@@ -264,7 +343,9 @@ const Routes = () => {
                    element={
                      <ProtectedRoute>
                        <RoleBasedRoute allowedRoles={['admin', 'manager', 'gateway_manager']}>
-                         <BankData />
+                         <Layout>
+                           <BankData />
+                         </Layout>
                        </RoleBasedRoute>
                      </ProtectedRoute>
                    }
@@ -274,7 +355,9 @@ const Routes = () => {
                    element={
                      <ProtectedRoute>
                        <RoleBasedRoute allowedRoles={['admin', 'manager', 'gateway_manager']}>
-                         <AddBank />
+                         <Layout>
+                           <AddBank />
+                         </Layout>
                        </RoleBasedRoute>
                      </ProtectedRoute>
                    }
@@ -284,24 +367,46 @@ const Routes = () => {
                    element={
                      <ProtectedRoute>
                        <RoleBasedRoute allowedRoles={['admin', 'manager', 'gateway_manager']}>
-                         <BankDashboard />
+                         <Layout>
+                           <BankDashboard />
+                         </Layout>
                        </RoleBasedRoute>
                      </ProtectedRoute>
                    }
                  />
                  <Route
-                   path="/bill-payments"
+                   path="/bank-data/:id/edit"
                    element={
                      <ProtectedRoute>
-                       <BillPayments />
+                       <RoleBasedRoute allowedRoles={['admin', 'manager', 'gateway_manager']}>
+                         <Layout>
+                           <EditBank />
+                         </Layout>
+                       </RoleBasedRoute>
                      </ProtectedRoute>
                    }
                  />
                  <Route
-                   path="/bill-payments/add"
+                   path="/gateways"
                    element={
                      <ProtectedRoute>
-                       <AddBillPayment />
+                       <RoleBasedRoute allowedRoles={['admin', 'gateway_manager', 'operator']}>
+                         <Layout>
+                           <Gateways />
+                         </Layout>
+                       </RoleBasedRoute>
+                     </ProtectedRoute>
+                   }
+                 />
+                 <Route
+                   path="/alerts"
+                   element={
+                     <ProtectedRoute>
+                       <RoleBasedRoute allowedRoles={['admin', 'manager', 'operator']}>
+                         <Layout>
+                           <Alerts />
+                         </Layout>
+                       </RoleBasedRoute>
                      </ProtectedRoute>
                    }
                  />
@@ -310,7 +415,9 @@ const Routes = () => {
                    element={
                      <ProtectedRoute>
                        <RoleBasedRoute allowedRoles={['admin', 'manager']}>
-                         <Users />
+                         <Layout>
+                           <Users />
+                         </Layout>
                        </RoleBasedRoute>
                      </ProtectedRoute>
                    }
@@ -319,8 +426,10 @@ const Routes = () => {
                    path="/reports"
                    element={
                      <ProtectedRoute>
-                       <RoleBasedRoute allowedRoles={['admin', 'manager']}>
-                         <Reports />
+                       <RoleBasedRoute allowedRoles={['admin', 'manager', 'member', 'operator']}>
+                         <Layout>
+                           <Reports />
+                         </Layout>
                        </RoleBasedRoute>
                      </ProtectedRoute>
                    }
@@ -330,7 +439,9 @@ const Routes = () => {
                    element={
                      <ProtectedRoute>
                        <RoleBasedRoute allowedRoles={['admin', 'manager']}>
-                         <CompanyDashboard />
+                         <Layout>
+                           <CompanyDashboard />
+                         </Layout>
                        </RoleBasedRoute>
                      </ProtectedRoute>
                    }
@@ -340,7 +451,9 @@ const Routes = () => {
                    element={
                      <ProtectedRoute>
                        <RoleBasedRoute allowedRoles={['admin', 'manager']}>
-                         <CompanyProfits />
+                         <Layout>
+                           <CompanyProfits />
+                         </Layout>
                        </RoleBasedRoute>
                      </ProtectedRoute>
                    }

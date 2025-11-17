@@ -30,7 +30,9 @@ router.get('/', [
     }
 
     const { search, status, page = 1, limit = 10 } = req.query;
-    const skip = (page - 1) * limit;
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
 
     let query = { isDeleted: false };
 
@@ -56,9 +58,47 @@ router.get('/', [
       .populate('lastUpdatedBy', 'name email')
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(limitNum);
 
     const total = await Cardholder.countDocuments(query);
+
+    // Calculate outstanding amounts from banks for each cardholder
+    const cardholdersWithOutstanding = await Promise.all(
+      cardholders.map(async (cardholder) => {
+        // Get all banks for this cardholder
+        const banks = await Bank.find({ 
+          cardholder: cardholder._id,
+          isDeleted: false 
+        });
+        
+        // Calculate total outstanding from all banks
+        const totalOutstanding = banks.reduce((sum, bank) => {
+          const bankOutstanding = bank.outstandingAmount || 0;
+          console.log(`Bank ${bank.bankName} (${bank.cardNumber}): outstandingAmount = ${bankOutstanding}`);
+          return sum + bankOutstanding;
+        }, 0);
+        
+        console.log(`Cardholder ${cardholder.name} (${cardholder._id}): Total outstanding = ${totalOutstanding}, Banks count = ${banks.length}`);
+        
+        // Get card count
+        const cardCount = banks.length;
+        
+        // Get last statement date
+        const lastStatement = await Statement.findOne({
+          cardholder: cardholder._id,
+          isDeleted: false
+        }).sort({ createdAt: -1 });
+        
+        // Convert to plain object and add calculated fields
+        const cardholderObj = cardholder.toObject();
+        cardholderObj.totalOutstanding = totalOutstanding;
+        cardholderObj.outstandingAmount = totalOutstanding; // For compatibility
+        cardholderObj.cardCount = cardCount;
+        cardholderObj.lastStatementDate = lastStatement ? lastStatement.createdAt : null;
+        
+        return cardholderObj;
+      })
+    );
 
     // Get statistics
     const stats = await Cardholder.aggregate([
@@ -71,38 +111,38 @@ router.get('/', [
       }
     ]);
 
-    const totalOutstanding = await Cardholder.aggregate([
-      { $match: { isDeleted: false } },
-      {
-        $group: {
-          _id: null,
-          total: { $sum: '$totalOutstanding' }
-        }
-      }
-    ]);
+    // Calculate total outstanding across all cardholders
+    const totalOutstanding = cardholdersWithOutstanding.reduce((sum, c) => {
+      return sum + (c.totalOutstanding || 0);
+    }, 0);
 
     res.json({
       success: true,
-      data: cardholders,
+      data: cardholdersWithOutstanding,
       pagination: {
-        current: parseInt(page),
-        pages: Math.ceil(total / limit),
+        current: pageNum,
+        pages: Math.ceil(total / limitNum),
         total,
-        limit: parseInt(limit)
+        limit: limitNum
       },
       stats: {
         byStatus: stats,
-        totalOutstanding: totalOutstanding[0]?.total || 0
+        totalOutstanding: totalOutstanding
       }
     });
   } catch (error) {
     console.error('Get cardholders error:', error);
-    res.status(500).json({ success: false, message: 'Server error' });
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || 'Server error',
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
 // @route   GET /api/cardholders/:id
-// @desc    Get single cardholder by ID
+// @desc    Get single cardholder by ID with dashboard data
 router.get('/:id', async (req, res) => {
   try {
     const cardholder = await Cardholder.findById(req.params.id)
@@ -113,20 +153,148 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Cardholder not found' });
     }
 
-    // Get related data
-    const [statements, banks, recentTransactions] = await Promise.all([
-      Statement.find({ cardholder: req.params.id }).limit(5),
+    // Get related data for dashboard
+    const [statements, banks, recentTransactions, allTransactions] = await Promise.all([
+      Statement.find({ cardholder: req.params.id, isDeleted: false })
+        .sort({ createdAt: -1 })
+        .populate('uploadedBy', 'name email'),
       Bank.find({ cardholder: req.params.id }),
-      Transaction.find({ cardholder: req.params.id }).limit(10)
+      Transaction.find({ cardholder: req.params.id, isDeleted: false })
+        .sort({ date: -1 })
+        .limit(10)
+        .populate('verifiedBy', 'name email')
+        .populate('statement', 'month year'),
+      Transaction.find({ cardholder: req.params.id, isDeleted: false })
     ]);
+
+    // Get all statements with populated data to link transactions to banks
+    const allStatements = await Statement.find({ cardholder: req.params.id, isDeleted: false });
+    
+    // Create a map of statement ID to bank (using cardDigits and bankName from statement)
+    const statementToBankMap = new Map();
+    statements.forEach(statement => {
+      // Find matching bank by cardDigits (last 4 digits) and bankName
+      const matchingBank = banks.find(bank => 
+        bank.cardNumber && bank.cardNumber.slice(-4) === statement.cardDigits &&
+        bank.bankName === statement.bankName
+      );
+      if (matchingBank) {
+        statementToBankMap.set(statement._id.toString(), matchingBank);
+      }
+    });
+
+    // Calculate bank summaries per bank
+    const bankSummaries = await Promise.all(
+      banks.map(async (bank) => {
+        // Find transactions for this bank by matching statement's bankName and cardDigits
+        const bankStatements = allStatements.filter(s => 
+          s.bankName === bank.bankName && 
+          s.cardDigits === bank.cardNumber.slice(-4)
+        );
+        const bankStatementIds = bankStatements.map(s => s._id.toString());
+        
+        const bankTransactions = allTransactions.filter(t => 
+          t.statement && bankStatementIds.includes(t.statement.toString())
+        );
+        
+        const totals = {
+          orders: bankTransactions.filter(t => t.category === 'orders').reduce((sum, t) => sum + Math.abs(t.amount), 0),
+          bills: bankTransactions.filter(t => t.category === 'bills').reduce((sum, t) => sum + Math.abs(t.amount), 0),
+          withdrawals: bankTransactions.filter(t => t.category === 'withdrawals').reduce((sum, t) => sum + Math.abs(t.amount), 0),
+          fees: bankTransactions.filter(t => t.category === 'fees').reduce((sum, t) => sum + Math.abs(t.amount), 0),
+          personal: bankTransactions.filter(t => t.category === 'personal_use').reduce((sum, t) => sum + Math.abs(t.amount), 0)
+        };
+        
+        // Calculate total payouts received (for orders with payoutReceived = true)
+        const totalPayoutsReceived = bankTransactions
+          .filter(t => t.category === 'orders' && t.payoutReceived === true)
+          .reduce((sum, t) => sum + (t.payoutAmount || 0), 0);
+        
+        const summary = {
+          bankId: bank._id,
+          bankName: bank.bankName,
+          cardNumber: bank.cardNumber,
+          cardLimit: bank.cardLimit,
+          availableLimit: bank.availableLimit,
+          outstandingAmount: bank.outstandingAmount,
+          totals,
+          totalPayoutsReceived,
+          profit: totals.orders - totals.bills - totals.fees, // Simplified calculation
+          loss: totals.bills + totals.fees + totals.personal, // Simplified calculation
+          toTake: bank.outstandingAmount,
+          toGive: bank.availableLimit
+        };
+        
+        return summary;
+      })
+    );
+
+    // Calculate overall summary across all banks
+    const totalPayoutsReceived = allTransactions
+      .filter(t => t.category === 'orders' && t.payoutReceived === true)
+      .reduce((sum, t) => sum + (t.payoutAmount || 0), 0);
+    
+    const overallSummary = {
+      totalToGive: banks.reduce((sum, bank) => sum + bank.availableLimit, 0),
+      totalToTake: banks.reduce((sum, bank) => sum + bank.outstandingAmount, 0),
+      totalOrders: allTransactions.filter(t => t.category === 'orders').reduce((sum, t) => sum + Math.abs(t.amount), 0),
+      totalBills: allTransactions.filter(t => t.category === 'bills').reduce((sum, t) => sum + Math.abs(t.amount), 0),
+      totalWithdrawals: allTransactions.filter(t => t.category === 'withdrawals').reduce((sum, t) => sum + Math.abs(t.amount), 0),
+      totalFees: allTransactions.filter(t => t.category === 'fees').reduce((sum, t) => sum + Math.abs(t.amount), 0),
+      totalPersonal: allTransactions.filter(t => t.category === 'personal_use').reduce((sum, t) => sum + Math.abs(t.amount), 0),
+      totalPayoutsReceived,
+      advancesToCardholder: 0, // To be calculated based on business logic
+      totalAmountGiven: 0 // To be calculated based on business logic
+    };
 
     res.json({
       success: true,
       data: {
-        cardholder: cardholder.getPublicProfile(),
-        statements,
-        banks,
-        recentTransactions
+        // Cardholder Details (Mandatory fields)
+        cardholder: {
+          ...cardholder.getPublicProfile(),
+          // Ensure all mandatory fields are present
+          dob: cardholder.dob,
+          fatherName: cardholder.fatherName,
+          motherName: cardholder.motherName,
+          address: cardholder.address,
+          phone: cardholder.phone,
+          email: cardholder.email
+        },
+        // Statements
+        statements: statements.map(s => ({
+          id: s._id,
+          month: s.month,
+          year: s.year,
+          fullMonth: s.fullMonth,
+          timePeriod: s.timePeriod,
+          cardDigits: s.cardDigits,
+          status: s.status,
+          deadline: s.deadline,
+          isOverdue: s.isOverdue,
+          uploadedBy: s.uploadedBy
+        })),
+        // Individual Bank Data (All transactions)
+        transactions: allTransactions.map(t => ({
+          id: t._id,
+          date: t.date,
+          description: t.description,
+          amount: t.amount,
+          category: t.category,
+          orderSubcategory: t.orderSubcategory,
+          payoutReceived: t.payoutReceived,
+          payoutAmount: t.payoutAmount,
+          verified: t.verified,
+          verifiedBy: t.verifiedBy,
+          verifiedAt: t.verifiedAt,
+          notes: t.notes
+        })),
+        // Bank Summary (Per Bank)
+        bankSummaries,
+        // Overall Summary (All Banks)
+        overallSummary,
+        // Recent transactions for quick view
+        recentTransactions: recentTransactions.slice(0, 10)
       }
     });
   } catch (error) {
@@ -292,8 +460,8 @@ router.delete('/:id', requirePermission('delete_cardholders'), async (req, res) 
 });
 
 // @route   PUT /api/cardholders/:id/status
-// @desc    Update cardholder status
-router.put('/:id/status', [
+// @desc    Update cardholder status (Admin, Manager, Operator only)
+router.put('/:id/status', requirePermission('edit_cardholders'), [
   body('status', 'Status is required').isIn(['active', 'pending', 'inactive', 'suspended'])
 ], async (req, res) => {
   try {

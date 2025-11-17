@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useRealtime } from '../../contexts/RealtimeContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { 
   getDashboardReports,
   getCardholderReports,
@@ -31,6 +32,7 @@ import {
 
 const Reports = () => {
   const { trackActivity } = useRealtime();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -46,6 +48,7 @@ const Reports = () => {
   // Load data when component mounts or filters change
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, dateRange, customDates, filters]);
 
   const loadData = async () => {
@@ -58,7 +61,16 @@ const Reports = () => {
         ? { startDate: customDates.startDate, endDate: customDates.endDate }
         : getDateRange(dateRange);
 
-      const params = { ...dateParams, ...filters };
+      // Create params object, ensuring page and limit are numbers
+      const params = { 
+        ...dateParams, 
+        page: parseInt(filters.page) || 1,
+        limit: parseInt(filters.limit) || 10,
+        // Include other filters (excluding page and limit to avoid duplication)
+        ...Object.fromEntries(
+          Object.entries(filters).filter(([key]) => key !== 'page' && key !== 'limit')
+        )
+      };
 
       // Track activity
       trackActivity('reports', 'viewed', activeTab, { reportType: activeTab });
@@ -87,7 +99,12 @@ const Reports = () => {
       setData(response.data || response);
     } catch (err) {
       console.error('Load reports error:', err);
-      setError(err.message || 'Failed to load reports');
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to load reports';
+      if (err.response?.status === 403) {
+        setError(`Access denied: ${errorMessage}. Please check your permissions.`);
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -272,71 +289,135 @@ const Reports = () => {
   };
 
   const renderTable = () => {
-    const items = data.data || data;
-    const pagination = data.pagination;
+    try {
+      // Handle different data structures
+      let items = [];
+      let pagination = null;
 
-    if (!items || items.length === 0) {
+      if (Array.isArray(data)) {
+        items = data;
+      } else if (data && Array.isArray(data.data)) {
+        items = data.data;
+        pagination = data.pagination;
+      } else if (data && data.transactions && Array.isArray(data.transactions)) {
+        items = data.transactions;
+        pagination = data.pagination;
+      } else if (data && data.statements && Array.isArray(data.statements)) {
+        items = data.statements;
+        pagination = data.pagination;
+      } else if (data && data.billPayments && Array.isArray(data.billPayments)) {
+        items = data.billPayments;
+        pagination = data.pagination;
+      } else if (data && typeof data === 'object') {
+        // Try to find any array in the data object
+        const arrayKeys = Object.keys(data).filter(key => Array.isArray(data[key]));
+        if (arrayKeys.length > 0) {
+          items = data[arrayKeys[0]];
+          pagination = data.pagination;
+        }
+      }
+
+      if (!items || items.length === 0) {
+        return (
+          <div className="text-center py-12">
+            <ChartBarIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500">No data available for the selected filters</p>
+            <p className="text-sm text-gray-400 mt-2">
+              {activeTab === 'transactions' && 'Upload and process statements to create transactions'}
+            </p>
+          </div>
+        );
+      }
+
+      // Get column keys from first item
+      const firstItem = items[0];
+      if (!firstItem || typeof firstItem !== 'object') {
+        return (
+          <div className="text-center py-12">
+            <p className="text-red-600">Invalid data format received</p>
+          </div>
+        );
+      }
+
+      const columns = Object.keys(firstItem);
+
       return (
-        <div className="text-center py-12">
-          <ChartBarIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-          <p className="text-gray-500">No data available for the selected filters</p>
-        </div>
-      );
-    }
-
-    return (
-      <div className="space-y-4">
-        {/* Table */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  {Object.keys(items[0]).map((key) => (
-                    <th
-                      key={key}
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    >
-                      {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {items.map((item, index) => (
-                  <tr key={index} className="hover:bg-gray-50">
-                    {Object.values(item).map((value, valueIndex) => (
-                      <td key={valueIndex} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {typeof value === 'object' && value !== null 
-                          ? JSON.stringify(value) 
-                          : String(value || '')
-                        }
-                      </td>
+        <div className="space-y-4">
+          {/* Table */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    {columns.map((key) => (
+                      <th
+                        key={key}
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                      >
+                        {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()).replace(/_/g, ' ')}
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {items.map((item, index) => (
+                    <tr key={index} className="hover:bg-gray-50">
+                      {columns.map((key, valueIndex) => {
+                        const value = item[key];
+                        let displayValue = '';
+                        
+                        if (value === null || value === undefined) {
+                          displayValue = '-';
+                        } else if (typeof value === 'object') {
+                          if (value instanceof Date) {
+                            displayValue = new Date(value).toLocaleDateString();
+                          } else if (value._id) {
+                            displayValue = value.name || value.email || value._id.toString().slice(-8);
+                          } else {
+                            displayValue = JSON.stringify(value);
+                          }
+                        } else if (typeof value === 'boolean') {
+                          displayValue = value ? 'Yes' : 'No';
+                        } else {
+                          displayValue = String(value);
+                        }
+                        
+                        return (
+                          <td key={valueIndex} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {displayValue}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
 
         {/* Pagination */}
         {pagination && pagination.pages > 1 && (
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-700">
-              Showing page {pagination.current} of {pagination.pages} ({pagination.total} total)
+              Showing page {pagination.current || filters.page || 1} of {pagination.pages} ({pagination.total} total)
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => setFilters({ ...filters, page: pagination.current - 1 })}
-                disabled={pagination.current === 1}
+                onClick={() => {
+                  const newPage = (pagination.current || filters.page || 1) - 1;
+                  setFilters({ ...filters, page: newPage });
+                }}
+                disabled={(pagination.current || filters.page || 1) === 1}
                 className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Previous
               </button>
               <button
-                onClick={() => setFilters({ ...filters, page: pagination.current + 1 })}
-                disabled={pagination.current === pagination.pages}
+                onClick={() => {
+                  const newPage = (pagination.current || filters.page || 1) + 1;
+                  setFilters({ ...filters, page: newPage });
+                }}
+                disabled={(pagination.current || filters.page || 1) >= pagination.pages}
                 className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Next
@@ -346,6 +427,20 @@ const Reports = () => {
         )}
       </div>
     );
+    } catch (err) {
+      console.error('Error rendering table:', err);
+      return (
+        <div className="text-center py-12">
+          <p className="text-red-600 mb-4">Error rendering data: {err.message}</p>
+          <button
+            onClick={loadData}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
   };
 
   return (
@@ -474,3 +569,4 @@ const Reports = () => {
 };
 
 export default Reports;
+

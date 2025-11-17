@@ -81,16 +81,19 @@ export const getAccessibleModules = (user = null) => {
   const moduleAccess = {
     admin: [
       'cardholders', 'bill_payments', 'gateways', 'reports', 
-      'company', 'users', 'settings', 'statements', 'bank_data'
+      'company', 'users', 'settings', 'statements', 'bank_data', 'transactions', 'alerts'
     ],
     manager: [
-      'cardholders', 'bill_payments', 'reports', 'statements', 'bank_data'
+      'cardholders', 'bill_payments', 'reports', 'statements', 'bank_data', 'transactions', 'users', 'company', 'alerts'
     ],
     member: [
-      'cardholders', 'bill_payments', 'statements', 'bank_data'
+      'cardholders', 'bill_payments', 'statements', 'bank_data', 'reports'
     ],
     gateway_manager: [
-      'gateways', 'bill_payments', 'reports', 'bank_data'
+      'gateways', 'bill_payments', 'reports', 'bank_data', 'transactions'
+    ],
+    operator: [
+      'cardholders', 'bill_payments', 'transactions', 'gateways', 'reports', 'alerts'
     ]
   };
   
@@ -143,7 +146,8 @@ export const ROLES = {
   ADMIN: 'admin',
   MANAGER: 'manager',
   MEMBER: 'member',
-  GATEWAY_MANAGER: 'gateway_manager'
+  GATEWAY_MANAGER: 'gateway_manager',
+  OPERATOR: 'operator'
 };
 
 export default {

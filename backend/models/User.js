@@ -44,7 +44,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['admin', 'manager', 'member', 'gateway_manager'],
+    enum: ['admin', 'manager', 'member', 'gateway_manager', 'operator'],
     default: 'member',
     required: true
   },
@@ -63,7 +63,10 @@ const userSchema = new mongoose.Schema({
       'view_reports',
       'manage_company',
       'manage_users',
-      'view_all_data'
+      'view_all_data',
+      'view_transactions',
+      'verify_transactions',
+      'manage_alerts'
     ]
   }],
   isActive: {
@@ -153,13 +156,16 @@ userSchema.methods.getAccessibleModules = function() {
       'company', 'users', 'settings', 'statements', 'bank_data'
     ],
     manager: [
-      'cardholders', 'bill_payments', 'reports', 'statements', 'bank_data'
+      'cardholders', 'bill_payments', 'reports', 'statements', 'bank_data', 'company', 'users', 'transactions'
     ],
     member: [
-      'cardholders', 'bill_payments', 'statements', 'bank_data'
+      'cardholders', 'bill_payments', 'statements', 'bank_data', 'reports'
     ],
     gateway_manager: [
       'gateways', 'bill_payments', 'reports', 'bank_data'
+    ],
+    operator: [
+      'cardholders', 'bill_payments', 'transactions', 'gateways', 'reports', 'alerts'
     ]
   };
   

@@ -2,8 +2,16 @@ import axios from 'axios';
 import { generateTokens, storeTokens, clearTokens, addAuthHeader, handleTokenExpiration } from './auth';
 
 // API base URL (in production, this should be your backend URL)
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://cardtrack.onrender.com/api';
+// Check if running in development (localhost) or production
+const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const defaultApiUrl = isDevelopment 
+  ? 'http://localhost:3003/api' 
+  : 'https://cardtrack.onrender.com/api';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || defaultApiUrl;
 console.log('[AuthAPI] Base URL:', API_BASE_URL);
+console.log('[AuthAPI] Environment:', import.meta.env.MODE);
+console.log('[AuthAPI] Hostname:', window.location.hostname);
 
 // Create axios instance
 const api = axios.create({
@@ -69,6 +77,34 @@ export const loginUser = async (credentials) => {
         response.data.tokens.refreshToken
       );
       
+      // Store user data in localStorage for getCurrentUser()
+      if (response.data.user) {
+        // Normalize user object: ensure id field exists (Mongoose may return _id)
+        const user = response.data.user;
+        const normalizedUser = {
+          ...user,
+          // Ensure id field exists - check _id first (Mongoose), then id, then convert to string
+          id: user._id ? (typeof user._id === 'string' ? user._id : user._id.toString()) : (user.id || null),
+          // Keep _id for compatibility
+          _id: user._id || user.id
+        };
+        // Remove any undefined values
+        Object.keys(normalizedUser).forEach(key => {
+          if (normalizedUser[key] === undefined) {
+            delete normalizedUser[key];
+          }
+        });
+        console.log('[AuthAPI] Normalized user:', normalizedUser);
+        localStorage.setItem('user', JSON.stringify(normalizedUser));
+        
+        // Return normalized user instead of raw response
+        return {
+          success: true,
+          user: normalizedUser,
+          tokens: response.data.tokens
+        };
+      }
+      
       return {
         success: true,
         user: response.data.user,
@@ -80,10 +116,15 @@ export const loginUser = async (credentials) => {
   } catch (error) {
     if (error?.response) {
       console.error('[AuthAPI] Login error response:', error.response.status, error.response.data);
+      // Extract error message from response
+      const errorMessage = error.response.data?.message || 
+                          error.response.data?.errors?.[0]?.msg || 
+                          'Login failed';
+      throw new Error(errorMessage);
     } else {
       console.error('[AuthAPI] Login error:', error?.message || error);
+      throw error;
     }
-    throw error;
   }
 };
 
@@ -106,6 +147,16 @@ export const registerUser = async (userData) => {
         response.data.tokens.refreshToken
       );
       
+      // Store user data in localStorage for getCurrentUser()
+      if (response.data.user) {
+        // Normalize user object: ensure id field exists (Mongoose may return _id)
+        const normalizedUser = {
+          ...response.data.user,
+          id: response.data.user.id || response.data.user._id || response.data.user._id?.toString()
+        };
+        localStorage.setItem('user', JSON.stringify(normalizedUser));
+      }
+      
       return {
         success: true,
         user: response.data.user,
@@ -116,6 +167,12 @@ export const registerUser = async (userData) => {
     throw new Error(response.data.message || 'Registration failed');
   } catch (error) {
     console.error('Registration error:', error);
+    if (error?.response) {
+      const errorMessage = error.response.data?.message || 
+                          error.response.data?.errors?.[0]?.msg || 
+                          'Registration failed';
+      throw new Error(errorMessage);
+    }
     throw error;
   }
 };

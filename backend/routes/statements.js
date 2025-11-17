@@ -225,6 +225,20 @@ router.post('/', upload.single('statement'), [
 
     await statement.save();
 
+    // Auto-process statement if uploaded by member (extract transactions automatically)
+    let processingResult = null;
+    if (req.user.role === 'member') {
+      try {
+        console.log('Auto-processing statement for member upload');
+        const StatementProcessor = require('../services/statementProcessor');
+        processingResult = await StatementProcessor.processStatement(statement._id.toString(), req.user.id);
+        console.log('Auto-processing completed:', processingResult);
+      } catch (processError) {
+        console.error('Auto-processing failed (non-critical):', processError);
+        // Don't fail the upload if processing fails - user can process manually later
+      }
+    }
+
     // Populate the response
     await statement.populate([
       { path: 'cardholder', select: 'name email' },
@@ -233,8 +247,12 @@ router.post('/', upload.single('statement'), [
 
     res.status(201).json({
       success: true,
-      message: 'Statement uploaded successfully',
-      data: statement.getPublicInfo()
+      message: processingResult ? 
+        `Statement uploaded and processed successfully! Found ${processingResult.transactions || 0} transactions.` :
+        'Statement uploaded successfully. Please process it to extract transactions.',
+      data: statement.getPublicInfo(),
+      autoProcessed: !!processingResult,
+      transactionsFound: processingResult?.transactions || 0
     });
   } catch (error) {
     console.error('Upload statement error:', error);
@@ -371,17 +389,51 @@ router.get('/:id/download', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Statement not found' });
     }
 
+    if (!statement.filePath) {
+      console.error('Statement missing filePath:', statement._id);
+      return res.status(404).json({ success: false, message: 'File path not found for this statement' });
+    }
+
+    if (!statement.fileName) {
+      console.error('Statement missing fileName:', statement._id);
+      return res.status(404).json({ success: false, message: 'File name not found for this statement' });
+    }
+
     // Check if file exists
     try {
       await fs.access(statement.filePath);
     } catch (error) {
-      return res.status(404).json({ success: false, message: 'File not found' });
+      console.error('File access error:', error);
+      console.error('File path:', statement.filePath);
+      return res.status(404).json({ 
+        success: false, 
+        message: `File not found at path: ${statement.filePath}` 
+      });
     }
 
-    res.download(statement.filePath, statement.fileName);
+    // Set headers for file download
+    res.setHeader('Content-Type', statement.mimeType || 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${statement.fileName}"`);
+    
+    // Send file
+    res.download(statement.filePath, statement.fileName, (err) => {
+      if (err) {
+        console.error('Download error:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ success: false, message: 'Error downloading file: ' + err.message });
+        }
+      }
+    });
   } catch (error) {
     console.error('Download statement error:', error);
-    res.status(500).json({ success: false, message: 'Server error' });
+    console.error('Error stack:', error.stack);
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || 'Server error',
+        error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
+    }
   }
 });
 
@@ -427,13 +479,35 @@ router.get('/cardholder/:cardholderId', async (req, res) => {
 // @desc    Process statement (extract data from PDF)
 router.post('/:id/process', async (req, res) => {
   try {
-    const result = await StatementProcessor.processStatement(req.params.id, req.user.id);
+    const statementId = req.params.id;
+    const userId = req.user?.id || req.user?.userId || req.user?._id;
+    
+    // Validate statement ID
+    if (!statementId || statementId === 'undefined') {
+      return res.status(400).json({
+        success: false,
+        message: 'Statement ID is required'
+      });
+    }
+    
+    // Validate user ID
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'User ID is required'
+      });
+    }
+    
+    console.log('Processing statement:', { statementId, userId });
+    const result = await StatementProcessor.processStatement(statementId, userId);
     res.json(result);
   } catch (error) {
     console.error('Process statement error:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({ 
       success: false, 
-      message: error.message || 'Failed to process statement' 
+      message: error.message || 'Failed to process statement',
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });

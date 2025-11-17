@@ -33,6 +33,23 @@ const transactionSchema = new mongoose.Schema({
     enum: ['bills', 'withdrawals', 'orders', 'fees', 'personal_use', 'unclassified'],
     default: 'unclassified'
   },
+  // Order sub-classification (only applicable when category is 'orders')
+  orderSubcategory: {
+    type: String,
+    enum: ['cb_won', 'ref', 'loss', 'running'],
+    default: null,
+    required: false
+  },
+  // Payout information (for orders)
+  payoutReceived: {
+    type: Boolean,
+    default: false
+  },
+  payoutAmount: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
   verified: {
     type: Boolean,
     default: false
@@ -73,6 +90,7 @@ transactionSchema.index({ statement: 1 });
 transactionSchema.index({ cardholder: 1 });
 transactionSchema.index({ date: -1 });
 transactionSchema.index({ category: 1 });
+transactionSchema.index({ orderSubcategory: 1 });
 transactionSchema.index({ verified: 1 });
 transactionSchema.index({ isDeleted: 1 });
 
@@ -106,6 +124,28 @@ transactionSchema.methods.unverify = function() {
   this.verified = false;
   this.verifiedBy = null;
   this.verifiedAt = null;
+  return this.save();
+};
+
+// Method to reject transaction
+transactionSchema.methods.rejectTransaction = function(userId, notes = '') {
+  this.verified = false;
+  this.verifiedBy = userId;
+  this.verifiedAt = new Date();
+  if (notes) {
+    this.notes = notes;
+  }
+  return this.save();
+};
+
+// Method to dispute transaction
+transactionSchema.methods.disputeTransaction = function(notes = '') {
+  this.verified = false;
+  this.verifiedBy = null;
+  this.verifiedAt = null;
+  if (notes) {
+    this.notes = (this.notes ? this.notes + '\n' : '') + `[DISPUTED] ${notes}`;
+  }
   return this.save();
 };
 
@@ -225,6 +265,9 @@ transactionSchema.methods.getPublicInfo = function() {
     balance: this.balance,
     formattedBalance: this.formattedBalance,
     category: this.category,
+    orderSubcategory: this.orderSubcategory,
+    payoutReceived: this.payoutReceived,
+    payoutAmount: this.payoutAmount,
     verified: this.verified,
     verifiedBy: this.verifiedBy,
     verifiedAt: this.verifiedAt,

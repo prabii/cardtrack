@@ -1,9 +1,17 @@
 import axios from 'axios';
 import { getAccessToken, clearTokens } from './auth';
 
+// API base URL - dynamic based on environment
+const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const defaultApiUrl = isDevelopment 
+  ? 'http://localhost:3003/api' 
+  : 'https://cardtrack.onrender.com/api';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || defaultApiUrl;
+
 // Create axios instance for reports API
 const api = axios.create({
-  baseURL: 'https://cardtrack.onrender.com/api/reports',
+  baseURL: `${API_BASE_URL}/reports`,
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
@@ -24,7 +32,7 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor to handle token expiration
+// Response interceptor to handle token expiration and access errors
 api.interceptors.response.use(
   (response) => {
     return response;
@@ -33,6 +41,9 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       clearTokens();
       window.location.href = '/login';
+    } else if (error.response?.status === 403) {
+      // Log 403 errors for debugging but don't redirect
+      console.error('Access denied (403):', error.response?.data?.message || 'You do not have permission to access this resource');
     }
     return Promise.reject(error);
   }

@@ -197,7 +197,10 @@ const UploadStatement = () => {
       
       if (response.success) {
         console.log('Upload successful!');
-        alert('Statement uploaded successfully!');
+        const message = response.autoProcessed 
+          ? `Statement uploaded and processed! Found ${response.transactionsFound || 0} transactions.`
+          : 'Statement uploaded successfully! Please process it to extract transactions.';
+        alert(message);
         navigate('/statements');
       } else {
         console.log('Upload failed:', response.message);

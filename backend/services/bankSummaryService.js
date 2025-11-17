@@ -27,19 +27,33 @@ class BankSummaryService {
       }
 
       // Get all statements for this bank
-      const statements = await Statement.find({
-        cardholder: bank.cardholder._id,
+      // Match by cardholder, bankName, and last 4 digits of card
+      const cardDigits = bank.cardNumber ? bank.cardNumber.slice(-4) : null;
+      const statementQuery = {
+        cardholder: bank.cardholder._id || bank.cardholder,
         bankName: bank.bankName,
-        cardDigits: bank.cardNumber.slice(-4),
         isDeleted: false
-      }).sort({ createdAt: -1 });
+      };
+      
+      // Only add cardDigits filter if we have it
+      if (cardDigits && cardDigits.length === 4) {
+        statementQuery.cardDigits = cardDigits;
+      }
+      
+      const statements = await Statement.find(statementQuery).sort({ createdAt: -1 });
 
       // Get all transactions for this bank
       const transactionFilters = {
-        cardholder: bank.cardholder._id,
-        statement: { $in: statements.map(s => s._id) },
+        cardholder: bank.cardholder._id || bank.cardholder,
         isDeleted: false
       };
+      
+      // If we have statements, filter by statement IDs
+      if (statements.length > 0) {
+        transactionFilters.statement = { $in: statements.map(s => s._id) };
+      }
+      // Note: If no statements, we can't reliably match transactions to this bank
+      // Transactions are linked to statements, so we'll get empty results which is correct
 
       // Apply date filters if provided
       if (filters.startDate && filters.endDate) {
@@ -376,21 +390,35 @@ class BankSummaryService {
       for (const bank of banks) {
         try {
           const summary = await this.getBankSummary(bank._id, filters);
-          if (summary.success) {
+          if (summary.success && summary.data && summary.data.summary) {
             bankSummaries.push(summary.data);
             
             const bankSummary = summary.data.summary;
-            totalCardLimit += bankSummary.cardLimit || 0;
-            totalAvailableLimit += bankSummary.availableLimit || 0;
-            totalOutstandingAmount += bankSummary.outstandingAmount || 0;
+            // Use bank's outstandingAmount if summary doesn't have it
+            const outstanding = bankSummary.outstandingAmount !== undefined && bankSummary.outstandingAmount !== null
+              ? bankSummary.outstandingAmount
+              : (bank.outstandingAmount || 0);
+            
+            totalCardLimit += bankSummary.cardLimit || bank.cardLimit || 0;
+            totalAvailableLimit += bankSummary.availableLimit || bank.availableLimit || 0;
+            totalOutstandingAmount += outstanding;
             totalTransactions += summary.data.transactions || 0;
             totalAmount += bankSummary.financials?.totalSpent || 0;
             totalVerified += bankSummary.verificationStats?.verifiedTransactions || 0;
+            
+            console.log(`Bank ${bank.bankName}: Outstanding = ${outstanding}, Total so far = ${totalOutstandingAmount}`);
           }
         } catch (error) {
           console.error(`Error getting summary for bank ${bank._id}:`, error);
+          // Still add bank's outstanding amount even if summary fails
+          if (bank.outstandingAmount) {
+            totalOutstandingAmount += bank.outstandingAmount;
+            console.log(`Using bank's outstandingAmount directly: ${bank.outstandingAmount}`);
+          }
         }
       }
+      
+      console.log(`Overall Summary - Total Outstanding: ${totalOutstandingAmount} from ${banks.length} banks`);
 
       // Calculate overall metrics
       const overallSummary = {

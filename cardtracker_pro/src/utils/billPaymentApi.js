@@ -134,6 +134,20 @@ export const failBillPayment = async (billPaymentId, failureReason, notes = '') 
   }
 };
 
+export const markBillPaymentAsPaid = async (billPaymentId, gatewayId, transactionReference = '', notes = '') => {
+  try {
+    const response = await api.put(`/bill-payments/${billPaymentId}/mark-paid`, {
+      gateway: gatewayId,
+      transactionReference,
+      notes
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error marking bill payment as paid:', error);
+    throw error;
+  }
+};
+
 export const verifyBillPayment = async (billPaymentId, notes = '') => {
   try {
     const response = await api.put(`/bill-payments/${billPaymentId}/verify`, { notes });

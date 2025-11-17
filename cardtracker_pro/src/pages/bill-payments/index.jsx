@@ -13,8 +13,10 @@ import {
   formatCurrency, 
   formatDate,
   getDaysUntilDue,
-  isOverdue
+  isOverdue,
+  deleteBillPayment
 } from '../../utils/billPaymentApi';
+import { hasPermission, PERMISSIONS } from '../../utils/permissions';
 import {
   CreditCard,
   Plus,
@@ -116,13 +118,15 @@ const BillPayments = () => {
   const handleDeleteBillPayment = async (billPayment) => {
     if (window.confirm(`Are you sure you want to delete this ${billPayment.requestType.replace('_', ' ')} request?`)) {
       try {
-        // Implement delete API call
-        console.log('Deleting bill payment:', billPayment._id);
-        // await deleteBillPayment(billPayment._id);
-        loadBillPayments();
+        const response = await deleteBillPayment(billPayment._id);
+        if (response.success) {
+          loadBillPayments();
+        } else {
+          alert(response.message || 'Failed to delete bill payment.');
+        }
       } catch (err) {
         console.error('Error deleting bill payment:', err);
-        alert('Failed to delete bill payment.');
+        alert(err.response?.data?.message || 'Failed to delete bill payment.');
       }
     }
   };
@@ -154,13 +158,15 @@ const BillPayments = () => {
                   />
                 </div>
               </div>
-              <button
-                onClick={handleAddBillPayment}
-                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-colors"
-              >
-                <Plus size={20} />
-                <span>New Payment Request</span>
-              </button>
+              {hasPermission(PERMISSIONS.CREATE_BILL_PAYMENTS, user) && (
+                <button
+                  onClick={handleAddBillPayment}
+                  className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-colors"
+                >
+                  <Plus size={20} />
+                  <span>New Payment Request</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -377,20 +383,27 @@ const BillPayments = () => {
                               >
                                 <Eye className="w-4 h-4" />
                               </button>
-                              <button 
-                                onClick={() => handleEditBillPayment(billPayment)} 
-                                className="text-indigo-600 hover:text-indigo-900 p-1 rounded-md hover:bg-indigo-50"
-                                title="Edit Request"
-                              >
-                                <Edit3 className="w-4 h-4" />
-                              </button>
-                              <button 
-                                onClick={() => handleDeleteBillPayment(billPayment)} 
-                                className="text-red-600 hover:text-red-900 p-1 rounded-md hover:bg-red-50"
-                                title="Delete Request"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              {/* Only show Edit for Members (can edit their own) and Admin/Manager (can edit any) */}
+                              {(user?.role === 'member' || hasPermission(PERMISSIONS.CREATE_BILL_PAYMENTS, user)) && user?.role !== 'operator' && (
+                                <button 
+                                  onClick={() => handleEditBillPayment(billPayment)} 
+                                  className="text-indigo-600 hover:text-indigo-900 p-1 rounded-md hover:bg-indigo-50"
+                                  title="Edit Request"
+                                >
+                                  <Edit3 className="w-4 h-4" />
+                                </button>
+                              )}
+                              {/* Delete: Members can delete their own pending requests, Admin/Manager can delete any pending */}
+                              {((user?.role === 'member' && billPayment.status === 'pending' && billPayment.requestDetails?.requestedBy === user?.id) || 
+                                (hasPermission(PERMISSIONS.CREATE_BILL_PAYMENTS, user) && billPayment.status === 'pending' && user?.role !== 'operator')) && (
+                                <button 
+                                  onClick={() => handleDeleteBillPayment(billPayment)} 
+                                  className="text-red-600 hover:text-red-900 p-1 rounded-md hover:bg-red-50"
+                                  title="Delete Request"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>

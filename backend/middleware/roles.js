@@ -93,8 +93,18 @@ const requireModuleAccess = (module) => {
         });
       }
 
-      const user = await User.findById(req.user.id);
+      // Get user ID from token (could be id, userId, or _id)
+      const userId = req.user.id || req.user.userId || req.user._id;
+      if (!userId) {
+        return res.status(401).json({ 
+          success: false, 
+          message: 'User ID not found in token' 
+        });
+      }
+
+      const user = await User.findById(userId);
       if (!user) {
+        console.error('User not found for ID:', userId);
         return res.status(401).json({ 
           success: false, 
           message: 'User not found' 
@@ -104,21 +114,26 @@ const requireModuleAccess = (module) => {
       // Check if user can access module
       const accessibleModules = user.getAccessibleModules();
       if (!accessibleModules.includes(module)) {
+        console.error(`User ${user.email} (${user.role}) tried to access module '${module}'. Accessible modules:`, accessibleModules);
         return res.status(403).json({ 
           success: false, 
-          message: `Access denied. Module '${module}' not accessible` 
+          message: `Access denied. Module '${module}' not accessible for role '${user.role}'` 
         });
       }
 
-      // Update user activity
-      await user.updateActivity();
+      // Update user activity (don't await to avoid blocking)
+      user.updateActivity().catch(err => {
+        console.error('Error updating user activity:', err);
+      });
       
       next();
     } catch (error) {
       console.error('Module access middleware error:', error);
+      console.error('Error stack:', error.stack);
       res.status(500).json({ 
         success: false, 
-        message: 'Internal server error' 
+        message: error.message || 'Internal server error',
+        error: process.env.NODE_ENV === 'development' ? error.stack : undefined
       });
     }
   };

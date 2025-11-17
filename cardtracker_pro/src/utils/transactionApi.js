@@ -70,6 +70,27 @@ export const unverifyTransaction = async (id) => {
 };
 
 /**
+ * Classify transaction (update category, orderSubcategory, payout info)
+ * @param {string} id - Transaction ID
+ * @param {Object} data - Classification data
+ * @param {string} data.category - Category
+ * @param {string} data.orderSubcategory - Order subcategory (if category is orders)
+ * @param {boolean} data.payoutReceived - Payout received status
+ * @param {number} data.payoutAmount - Payout amount
+ * @param {string} data.notes - Notes
+ * @returns {Promise<Object>} - Classification response
+ */
+export const classifyTransaction = async (id, data) => {
+  try {
+    const response = await api.put(`/transactions/${id}/classify`, data);
+    return response.data;
+  } catch (error) {
+    console.error('Classify transaction error:', error);
+    throw error;
+  }
+};
+
+/**
  * Update transaction category
  * @param {string} id - Transaction ID
  * @param {string} category - New category
@@ -77,7 +98,7 @@ export const unverifyTransaction = async (id) => {
  */
 export const updateTransactionCategory = async (id, category) => {
   try {
-    const response = await api.put(`/transactions/${id}/category`, { category });
+    const response = await api.put(`/transactions/${id}`, { category });
     return response.data;
   } catch (error) {
     console.error('Update transaction category error:', error);
@@ -209,6 +230,28 @@ export const getCategoryOptions = () => [
   { value: 'personal_use', label: 'Personal Use', color: 'purple' },
   { value: 'unclassified', label: 'Unclassified', color: 'gray' }
 ];
+
+/**
+ * Get order subcategory options
+ * @returns {Array} - Order subcategory options
+ */
+export const getOrderSubcategoryOptions = () => [
+  { value: 'cb_won', label: 'CB Won' },
+  { value: 'ref', label: 'REF' },
+  { value: 'loss', label: 'Loss' },
+  { value: 'running', label: 'Running' }
+];
+
+/**
+ * Get order subcategory label
+ * @param {string} value - Subcategory value
+ * @returns {string} - Subcategory label
+ */
+export const getOrderSubcategoryLabel = (value) => {
+  const options = getOrderSubcategoryOptions();
+  const option = options.find(o => o.value === value);
+  return option ? option.label : value;
+};
 
 /**
  * Get category color class
@@ -352,6 +395,7 @@ export default {
   getTransaction,
   verifyTransaction,
   unverifyTransaction,
+  classifyTransaction,
   updateTransactionCategory,
   updateTransactionNotes,
   bulkVerifyTransactions,
@@ -361,6 +405,8 @@ export default {
   getCardholderTransactions,
   getStatementTransactions,
   getCategoryOptions,
+  getOrderSubcategoryOptions,
+  getOrderSubcategoryLabel,
   getCategoryColor,
   getCategoryLabel,
   formatAmount,

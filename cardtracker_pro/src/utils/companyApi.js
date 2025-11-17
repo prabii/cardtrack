@@ -1,9 +1,15 @@
 import axios from 'axios';
 import { getAccessToken, clearTokens } from './auth';
 
+// Dynamic API URL based on environment
+const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const defaultApiUrl = isDevelopment 
+  ? 'http://localhost:3003/api/company' 
+  : 'https://cardtrack.onrender.com/api/company';
+
 // Create axios instance for company API
 const api = axios.create({
-  baseURL: 'https://cardtrack.onrender.com/api/company',
+  baseURL: defaultApiUrl,
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',

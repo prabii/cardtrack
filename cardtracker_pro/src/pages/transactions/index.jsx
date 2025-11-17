@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../../components/ui/Header';
 import Button from '../../components/ui/Button';
+import { useAuth } from '../../contexts/AuthContext';
 import { 
   getTransactions, 
   verifyTransaction, 
@@ -34,6 +35,7 @@ import {
 
 const Transactions = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [transactions, setTransactions] = useState([]);
   const [cardholders, setCardholders] = useState([]);
   const [statements, setStatements] = useState([]);
@@ -458,8 +460,12 @@ const Transactions = () => {
                     className="px-3 py-1 border border-blue-300 rounded text-sm"
                   >
                     <option value="">Select Action</option>
-                    <option value="verify">Verify Selected</option>
-                    <option value="categorize">Categorize Selected</option>
+                    {['operator', 'manager', 'admin'].includes(user?.role) && (
+                      <option value="verify">Verify Selected</option>
+                    )}
+                    {user?.role !== 'operator' && (
+                      <option value="categorize">Categorize Selected</option>
+                    )}
                   </select>
                   <Button
                     size="sm"
@@ -553,18 +559,24 @@ const Transactions = () => {
                           {formatAmount(transaction.amount)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <select
-                            value={transaction.category}
-                            onChange={(e) => handleUpdateCategory(transaction._id, e.target.value)}
-                            className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryColor(transaction.category)}`}
-                          >
-                            <option value="bills">Bills</option>
-                            <option value="withdrawals">Withdrawals</option>
-                            <option value="orders">Orders</option>
-                            <option value="fees">Fees</option>
-                            <option value="personal_use">Personal Use</option>
-                            <option value="unclassified">Unclassified</option>
-                          </select>
+                          {user?.role === 'operator' ? (
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryColor(transaction.category)}`}>
+                              {getCategoryLabel(transaction.category)}
+                            </span>
+                          ) : (
+                            <select
+                              value={transaction.category}
+                              onChange={(e) => handleUpdateCategory(transaction._id, e.target.value)}
+                              className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryColor(transaction.category)}`}
+                            >
+                              <option value="bills">Bills</option>
+                              <option value="withdrawals">Withdrawals</option>
+                              <option value="orders">Orders</option>
+                              <option value="fees">Fees</option>
+                              <option value="personal_use">Personal Use</option>
+                              <option value="unclassified">Unclassified</option>
+                            </select>
+                          )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
@@ -583,22 +595,25 @@ const Transactions = () => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex space-x-2">
-                            {transaction.verified ? (
-                              <button
-                                onClick={() => handleUnverifyTransaction(transaction._id)}
-                                className="text-red-600 hover:text-red-900"
-                                title="Unverify"
-                              >
-                                <XCircle className="w-4 h-4" />
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleVerifyTransaction(transaction._id)}
-                                className="text-green-600 hover:text-green-900"
-                                title="Verify"
-                              >
-                                <CheckCircle className="w-4 h-4" />
-                              </button>
+                            {/* Verify/Unverify button - visible to operators, managers, admins */}
+                            {['operator', 'manager', 'admin'].includes(user?.role) && (
+                              transaction.verified ? (
+                                <button
+                                  onClick={() => handleUnverifyTransaction(transaction._id)}
+                                  className="text-red-600 hover:text-red-900"
+                                  title="Unverify"
+                                >
+                                  <XCircle className="w-4 h-4" />
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleVerifyTransaction(transaction._id)}
+                                  className="text-green-600 hover:text-green-900"
+                                  title="Verify"
+                                >
+                                  <CheckCircle className="w-4 h-4" />
+                                </button>
+                              )
                             )}
                             <button
                               onClick={() => navigate(`/transactions/${transaction._id}`)}
