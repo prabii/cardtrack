@@ -344,6 +344,26 @@ const EditBillPayment = () => {
                   </div>
 
                   <div>
+                    <label htmlFor="paymentDetails.currency" className="block text-sm font-medium text-gray-700 mb-2">
+                      Currency
+                    </label>
+                    <select
+                      id="paymentDetails.currency"
+                      name="paymentDetails.currency"
+                      value={formData.paymentDetails.currency}
+                      onChange={handleChange}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      disabled={isSubmitting}
+                    >
+                      <option value="USD">USD - US Dollar</option>
+                      <option value="EUR">EUR - Euro</option>
+                      <option value="GBP">GBP - British Pound</option>
+                      <option value="CAD">CAD - Canadian Dollar</option>
+                      <option value="INR">INR - Indian Rupee</option>
+                    </select>
+                  </div>
+
+                  <div>
                     <label htmlFor="paymentDetails.paymentMethod" className="block text-sm font-medium text-gray-700 mb-2">
                       Payment Method <span className="text-red-500">*</span>
                     </label>

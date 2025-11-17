@@ -201,9 +201,11 @@ class StatementProcessor {
     const createdTransactions = [];
     
     console.log(`Creating transactions for statement ${statementId}, count: ${transactions.length}`);
+    console.log('Sample transaction data:', transactions.slice(0, 3));
     
     if (!transactions || transactions.length === 0) {
       console.warn('⚠️ No transactions to create!');
+      console.warn('This might be due to PDF extraction failure. Check PDF format and extraction patterns.');
       return createdTransactions;
     }
     
@@ -231,8 +233,10 @@ class StatementProcessor {
           console.warn(`Transaction ${i} missing description:`, transactionData);
           continue;
         }
-        if (!transactionData.amount || isNaN(transactionData.amount)) {
-          console.warn(`Transaction ${i} missing or invalid amount:`, transactionData);
+        // Ensure amount is valid and positive
+        const amountValue = Math.abs(parseFloat(transactionData.amount));
+        if (isNaN(amountValue) || amountValue <= 0) {
+          console.warn(`Transaction ${i} has invalid amount: ${transactionData.amount}, skipping`);
           continue;
         }
 
@@ -241,15 +245,17 @@ class StatementProcessor {
           cardholder: statement.cardholder,
           date: transactionData.date,
           description: transactionData.description.trim(),
-          amount: Math.abs(parseFloat(transactionData.amount)), // Ensure positive amount
-          balance: transactionData.balance ? parseFloat(transactionData.balance) : null,
+          amount: amountValue,
+          balance: transactionData.balance ? parseFloat(String(transactionData.balance).replace(/[$,]/g, '')) : null,
           category: transactionData.category || 'unclassified',
           verified: false
         });
 
         const savedTransaction = await transaction.save();
         createdTransactions.push(savedTransaction);
-        console.log(`✓ Created transaction ${i + 1}/${transactions.length}: ${savedTransaction.description} - $${savedTransaction.amount}`);
+        if (createdTransactions.length <= 5) {
+          console.log(`✓ Created transaction ${createdTransactions.length}/${transactions.length}: ${savedTransaction.description.substring(0, 40)}... - $${savedTransaction.amount}`);
+        }
       } catch (error) {
         console.error(`✗ Error creating transaction ${i + 1}:`, error.message);
         console.error('Transaction data:', JSON.stringify(transactionData, null, 2));
@@ -259,6 +265,9 @@ class StatementProcessor {
     }
 
     console.log(`Successfully created ${createdTransactions.length} out of ${transactions.length} transactions`);
+    if (createdTransactions.length !== transactions.length) {
+      console.warn(`⚠️ Warning: Only created ${createdTransactions.length} transactions out of ${transactions.length} parsed transactions. Some transactions may have been skipped due to validation errors.`);
+    }
     return createdTransactions;
   }
 

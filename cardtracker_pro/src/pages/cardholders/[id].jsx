@@ -29,7 +29,7 @@ import {
 const CardholderDashboard = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { trackActivity, trackViewing, getViewingUsers, getEditingUsers, startEditing, stopEditing } = useRealtime();
+  const { trackActivity, trackViewing, getViewingUsers, getEditingUsers, startEditing, stopEditing, joinRoom, leaveRoom, socket, connected } = useRealtime();
   const { user } = useAuth();
   const [cardholder, setCardholder] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
@@ -45,9 +45,12 @@ const CardholderDashboard = () => {
     loadCardholderData();
   }, [id]);
 
-  // Track viewing activity - send periodic updates
+  // Join module room and track viewing activity
   useEffect(() => {
-    if (cardholder && !isEditing) {
+    if (cardholder && socket && connected) {
+      // Join the cardholder module room to receive real-time updates
+      joinRoom(`module_cardholder`);
+      
       // Initial tracking
       trackViewing('cardholder', id, 'viewing');
       trackActivity('cardholder', 'viewed', id, {
@@ -62,17 +65,27 @@ const CardholderDashboard = () => {
 
       return () => {
         clearInterval(viewingInterval);
+        // Leave room when component unmounts
+        leaveRoom(`module_cardholder`);
       };
     }
-  }, [cardholder, id, trackViewing, trackActivity, isEditing]);
+  }, [cardholder, id, socket, connected, trackViewing, trackActivity, joinRoom, leaveRoom]);
 
-  // Get viewing and editing users
+  // Get viewing and editing users - update when socket receives new data
   const viewingUsers = getViewingUsers('cardholder', id);
   const editingUsers = getEditingUsers('cardholder', id);
   
   // Filter out current user from viewing/editing lists
-  const otherViewingUsers = viewingUsers.filter(u => u.userId !== user?.id && u.userId !== user?._id);
-  const otherEditingUsers = editingUsers.filter(u => u.userId !== user?.id && u.userId !== user?._id);
+  const otherViewingUsers = viewingUsers.filter(u => {
+    const userId = u.userId || u.user?.id || u.user?._id;
+    const currentUserId = user?.id || user?._id;
+    return userId !== currentUserId;
+  });
+  const otherEditingUsers = editingUsers.filter(u => {
+    const userId = u.userId || u.user?.id || u.user?._id;
+    const currentUserId = user?.id || user?._id;
+    return userId !== currentUserId;
+  });
 
   // Track editing when edit button is clicked
   const handleEditClick = () => {
@@ -209,14 +222,14 @@ const CardholderDashboard = () => {
         <div className="max-w-7xl mx-auto px-4 lg:px-6 py-8">
           {/* Real-time Activity Indicators */}
           {(otherViewingUsers.length > 0 || otherEditingUsers.length > 0) && (
-            <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center space-x-4">
+            <div className="mb-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 flex items-center space-x-4 shadow-sm">
               {otherEditingUsers.length > 0 && (
-                <div className="flex items-center space-x-2">
-                  <Edit3 className="w-4 h-4 text-orange-600" />
-                  <span className="text-sm text-gray-700">
+                <div className="flex items-center space-x-2 bg-orange-50 px-3 py-2 rounded-lg border border-orange-200">
+                  <Edit3 className="w-5 h-5 text-orange-600" />
+                  <span className="text-sm font-medium text-gray-800">
                     {otherEditingUsers.map((u, idx) => (
-                      <span key={u.userId}>
-                        <span className="font-semibold text-orange-600">{u.user?.name || 'Someone'}</span>
+                      <span key={u.userId || u.user?.id || idx}>
+                        <span className="font-semibold text-orange-600">👤 {u.user?.name || u.name || 'Someone'}</span>
                         {idx < otherEditingUsers.length - 1 ? ', ' : ''}
                       </span>
                     ))}
@@ -225,12 +238,12 @@ const CardholderDashboard = () => {
                 </div>
               )}
               {otherViewingUsers.length > 0 && (
-                <div className="flex items-center space-x-2">
-                  <Eye className="w-4 h-4 text-blue-600" />
-                  <span className="text-sm text-gray-700">
+                <div className="flex items-center space-x-2 bg-blue-50 px-3 py-2 rounded-lg border border-blue-200">
+                  <Eye className="w-5 h-5 text-blue-600" />
+                  <span className="text-sm font-medium text-gray-800">
                     {otherViewingUsers.map((u, idx) => (
-                      <span key={u.userId}>
-                        <span className="font-semibold text-blue-600">{u.user?.name || 'Someone'}</span>
+                      <span key={u.userId || u.user?.id || idx}>
+                        <span className="font-semibold text-blue-600">👁️ {u.user?.name || u.name || 'Someone'}</span>
                         {idx < otherViewingUsers.length - 1 ? ', ' : ''}
                       </span>
                     ))}

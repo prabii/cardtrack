@@ -233,31 +233,35 @@ class PDFProcessor {
       const nextLine = lines[i + 1];
       const nextNextLine = lines[i + 2];
       
-      // Pattern 1: If current line has a date but no $ sign or number amount, and next line has a $ sign or number, merge them
-      if (line.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}/) && 
+      // Pattern 1: Date - Description - $Amount (dash format, e.g., "11/05/2025 - AMAZON.COM - $125.50")
+      if (line.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}\s*-\s*.+?\s*-\s*\$/)) {
+        mergedLines.push(line);
+      }
+      // Pattern 2: If current line has a date but no $ sign or number amount, and next line has a $ sign or number, merge them
+      else if (line.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}/) && 
           !line.match(/[\d,]+\.?\d{2}$/) && 
           nextLine && (nextLine.match(/\$[\d,]+\.?\d{2}/) || nextLine.match(/^[\d,]+\.?\d{2}$/))) {
         mergedLines.push(line + ' ' + nextLine);
         i++; // Skip next line since we merged it
       }
-      // Pattern 2: If current line has a date, next line is description (no date, no $, no ending number), and nextNextLine has $ or number, merge all three
+      // Pattern 3: If current line has a date, next line is description (no date, no $, no ending number), and nextNextLine has $ or number, merge all three
       else if (line.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}/) && 
                nextLine && !nextLine.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/) && !nextLine.match(/[\d,]+\.?\d{2}$/) &&
                nextNextLine && (nextNextLine.match(/\$[\d,]+\.?\d{2}/) || nextNextLine.match(/^[\d,]+\.?\d{2}$/))) {
         mergedLines.push(line + ' ' + nextLine + ' ' + nextNextLine);
         i += 2; // Skip next two lines
       }
-      // Pattern 3: If line already has date and $ or ending number, keep it as is
+      // Pattern 4: If line already has date and $ or ending number, keep it as is
       else if (line.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/) && (line.match(/\$[\d,]+\.?\d{2}/) || line.match(/[\d,]+\.?\d{2}$/))) {
         mergedLines.push(line);
       }
-      // Pattern 4: If line has date and description but no amount, try to merge with next line that has amount
+      // Pattern 5: If line has date and description but no amount, try to merge with next line that has amount
       else if (line.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}/) && line.length > 10 && 
                nextLine && (nextLine.match(/^\$?[\d,]+\.?\d{2}$/) || nextLine.match(/\$[\d,]+\.?\d{2}/))) {
         mergedLines.push(line + ' ' + nextLine);
         i++;
       }
-      // Pattern 5: Otherwise, keep the line
+      // Pattern 6: Otherwise, keep the line
       else {
         mergedLines.push(line);
       }
@@ -304,29 +308,31 @@ class PDFProcessor {
   static extractTransactions(lines) {
     const transactions = [];
     const transactionPatterns = [
-      // Pattern 1: Date Description $Amount (table format - most common, e.g., "11/05/2025 AMAZON.COM PURCHASE $125.50")
+      // Pattern 1: Date - Description - $Amount (dash format, e.g., "11/05/2025 - AMAZON.COM PURCHASE - $125.50")
+      /^(\d{1,2}\/\d{1,2}\/\d{2,4})\s*-\s*(.+?)\s*-\s*\$([\d,]+\.?\d{2})$/,
+      // Pattern 2: Date Description $Amount (table format - most common, e.g., "11/05/2025 AMAZON.COM PURCHASE $125.50")
       /^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s+\$([\d,]+\.?\d{2})$/,
-      // Pattern 2: Date: Description - $Amount (colon format)
+      // Pattern 3: Date: Description - $Amount (colon format)
       /^(\d{1,2}\/\d{1,2}\/\d{2,4}):\s*(.+?)\s*-\s*\$([\d,]+\.?\d{2})$/,
-      // Pattern 3: Date: Description $Amount (colon without dash)
+      // Pattern 4: Date: Description $Amount (colon without dash)
       /^(\d{1,2}\/\d{1,2}\/\d{2,4}):\s*(.+?)\s+\$([\d,]+\.?\d{2})$/,
-      // Pattern 4: Date Description Amount (with optional $)
+      // Pattern 5: Date Description Amount (with optional $)
       /^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s+\$?([\d,]+\.?\d*)$/,
-      // Pattern 5: Date Description Amount Balance
+      // Pattern 6: Date Description Amount Balance
       /^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s+\$?([\d,]+\.?\d*)\s+\$?([\d,]+\.?\d*)$/,
-      // Pattern 6: Description Date Amount
+      // Pattern 7: Description Date Amount
       /^(.+?)\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+\$?([\d,]+\.?\d*)$/,
-      // Pattern 7: Date Description Amount (non-anchored, more flexible)
+      // Pattern 8: Date Description Amount (non-anchored, more flexible)
       /(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s+\$([\d,]+\.?\d{2})/,
-      // Pattern 8: Date Description Amount (without $ sign)
+      // Pattern 9: Date Description Amount (without $ sign)
       /^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s+([\d,]+\.?\d{2})$/,
-      // Pattern 9: Date Description Amount (more flexible spacing)
+      // Pattern 10: Date Description Amount (more flexible spacing)
       /^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s+([\d,]+\.?\d{2,4})$/,
-      // Pattern 10: Date Description Amount (with spaces in amount)
+      // Pattern 11: Date Description Amount (with spaces in amount)
       /^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s+\$?\s*([\d,]+\.?\d*)$/,
-      // Pattern 11: Date Description Amount (description can have numbers)
+      // Pattern 12: Date Description Amount (description can have numbers)
       /^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s+([\d]{1,3}(?:,\d{3})*\.\d{2})$/,
-      // Pattern 12: Date Description Amount (very flexible - last resort)
+      // Pattern 13: Date Description Amount (very flexible - last resort)
       /(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s+([\d,]+\.?\d{2,4})/
     ];
 
@@ -401,40 +407,43 @@ class PDFProcessor {
 
       // Handle based on pattern index for more reliable matching (0-indexed)
       if (patternIndex === 0) {
-        // Pattern 1: Date Description $Amount (table format - most common)
+        // Pattern 1: Date - Description - $Amount (dash format)
         [, date, description, amount] = match;
       } else if (patternIndex === 1) {
-        // Pattern 2: Date: Description - $Amount
+        // Pattern 2: Date Description $Amount (table format - most common)
         [, date, description, amount] = match;
       } else if (patternIndex === 2) {
-        // Pattern 3: Date: Description $Amount (without dash)
+        // Pattern 3: Date: Description - $Amount
         [, date, description, amount] = match;
       } else if (patternIndex === 3) {
-        // Pattern 4: Date Description Amount with optional $
+        // Pattern 4: Date: Description $Amount (without dash)
         [, date, description, amount] = match;
       } else if (patternIndex === 4) {
-        // Pattern 5: Date Description Amount Balance
-        [, date, description, amount, balance] = match;
-      } else if (patternIndex === 5) {
-        // Pattern 6: Description Date Amount
-        [, description, date, amount] = match;
-      } else if (patternIndex === 6) {
-        // Pattern 7: Date Description Amount with $ (non-anchored)
+        // Pattern 5: Date Description Amount with optional $
         [, date, description, amount] = match;
+      } else if (patternIndex === 5) {
+        // Pattern 6: Date Description Amount Balance
+        [, date, description, amount, balance] = match;
+      } else if (patternIndex === 6) {
+        // Pattern 7: Description Date Amount
+        [, description, date, amount] = match;
       } else if (patternIndex === 7) {
-        // Pattern 8: Date Description Amount without $
+        // Pattern 8: Date Description Amount with $ (non-anchored)
         [, date, description, amount] = match;
       } else if (patternIndex === 8) {
-        // Pattern 9: Date Description Amount (more flexible spacing)
+        // Pattern 9: Date Description Amount without $
         [, date, description, amount] = match;
       } else if (patternIndex === 9) {
-        // Pattern 10: Date Description Amount (with spaces in amount)
+        // Pattern 10: Date Description Amount (more flexible spacing)
         [, date, description, amount] = match;
       } else if (patternIndex === 10) {
-        // Pattern 11: Date Description Amount (description can have numbers)
+        // Pattern 11: Date Description Amount (with spaces in amount)
         [, date, description, amount] = match;
       } else if (patternIndex === 11) {
-        // Pattern 12: Date Description Amount (very flexible - last resort)
+        // Pattern 12: Date Description Amount (description can have numbers)
+        [, date, description, amount] = match;
+      } else if (patternIndex === 12) {
+        // Pattern 13: Date Description Amount (very flexible - last resort)
         [, date, description, amount] = match;
       } else {
         // Default: assume first group is date, second is description, third is amount

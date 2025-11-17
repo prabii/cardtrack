@@ -192,6 +192,107 @@ router.put('/:id', [
   }
 });
 
+// @route   POST /api/users
+// @desc    Create new user (Admin only)
+router.post('/', requireAdmin, [
+  body('name').trim().isLength({ min: 2, max: 50 }).withMessage('Name must be between 2 and 50 characters'),
+  body('email').isEmail().normalizeEmail().withMessage('Please enter a valid email'),
+  body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters long'),
+  body('role').isIn(['admin', 'manager', 'member', 'gateway_manager', 'operator']).withMessage('Invalid role'),
+  body('phone').optional().isString().trim(),
+  body('address').optional().isString().trim(),
+  body('isActive').optional().isBoolean()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const { name, email, password, role, phone, address, isActive = true } = req.body;
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'User with this email already exists'
+      });
+    }
+
+    // Set default permissions based on role
+    const getDefaultPermissions = (userRole) => {
+      const permissions = {
+        admin: [
+          'view_cardholders', 'create_cardholders', 'edit_cardholders', 'delete_cardholders',
+          'view_bill_payments', 'create_bill_payments', 'process_bill_payments',
+          'view_gateways', 'manage_gateways', 'view_reports', 'manage_company',
+          'manage_users', 'view_all_data'
+        ],
+        manager: [
+          'view_cardholders', 'create_cardholders', 'edit_cardholders', 'delete_cardholders',
+          'view_bill_payments', 'create_bill_payments', 'process_bill_payments',
+          'view_reports', 'view_all_data', 'view_users', 'view_transactions', 'manage_company'
+        ],
+        member: [
+          'view_cardholders', 'create_cardholders', 'edit_cardholders',
+          'view_bill_payments', 'create_bill_payments', 'view_reports'
+        ],
+        gateway_manager: [
+          'view_gateways', 'manage_gateways', 'view_bill_payments', 'process_bill_payments',
+          'view_reports', 'view_all_data'
+        ],
+        operator: [
+          'view_cardholders', 'edit_cardholders',
+          'view_bill_payments', 'process_bill_payments',
+          'view_transactions', 'verify_transactions',
+          'view_gateways',
+          'view_reports', 'manage_alerts'
+        ]
+      };
+      return permissions[userRole] || permissions.member;
+    };
+
+    // Create new user
+    const newUser = new User({
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      password: password,
+      role: role,
+      permissions: getDefaultPermissions(role),
+      phone: phone?.trim() || '',
+      address: address?.trim() || '',
+      isActive: isActive
+    });
+
+    await newUser.save();
+
+    // Return user without password
+    const userResponse = newUser.toObject();
+    delete userResponse.password;
+    delete userResponse.otpCode;
+    delete userResponse.otpExpires;
+    delete userResponse.resetPasswordToken;
+    delete userResponse.resetPasswordExpires;
+
+    res.status(201).json({
+      success: true,
+      message: 'User created successfully',
+      data: userResponse
+    });
+  } catch (error) {
+    console.error('Create user error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error while creating user'
+    });
+  }
+});
+
 // @route   DELETE /api/users/:id
 // @desc    Delete user (Admin only)
 router.delete('/:id', requireAdmin, async (req, res) => {

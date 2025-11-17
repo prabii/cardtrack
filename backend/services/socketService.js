@@ -111,6 +111,7 @@ class SocketService {
       socket.on('join_room', (roomId) => {
         socket.join(roomId);
         this.addUserToRoom(roomId, socket.userId);
+        console.log(`User ${socket.userId} joined room: ${roomId}`);
         socket.emit('joined_room', { roomId });
       });
 
@@ -307,7 +308,26 @@ class SocketService {
   broadcastViewing(socket, data) {
     const { resource, resourceId, action } = data;
     
-    socket.to(`module_${resource}`).emit('viewing_indicator', {
+    // Broadcast to module room and also to the specific resource room
+    const moduleRoom = `module_${resource}`;
+    const resourceRoom = `${resource}_${resourceId}`;
+    
+    // Emit to module room (all users viewing any cardholder)
+    socket.to(moduleRoom).emit('viewing_indicator', {
+      userId: socket.userId,
+      user: {
+        id: socket.user._id,
+        name: socket.user.name,
+        role: socket.user.role
+      },
+      resource,
+      resourceId,
+      action,
+      timestamp: new Date()
+    });
+    
+    // Also emit to specific resource room
+    socket.to(resourceRoom).emit('viewing_indicator', {
       userId: socket.userId,
       user: {
         id: socket.user._id,
@@ -320,15 +340,17 @@ class SocketService {
       timestamp: new Date()
     });
 
-    // Note: Removed viewing notifications to reduce spam
-    // Only show viewing indicators, not notifications
+    console.log(`📡 Broadcasting viewing indicator: ${socket.user.name} viewing ${resource} ${resourceId}`);
   }
 
   broadcastEditing(socket, data, isEditing) {
     const { resource, resourceId } = data;
     
-    // Broadcast to all users viewing this resource
-    socket.to(`module_${resource}`).emit('editing_indicator', {
+    const moduleRoom = `module_${resource}`;
+    const resourceRoom = `${resource}_${resourceId}`;
+    
+    // Broadcast to module room (all users viewing any cardholder)
+    socket.to(moduleRoom).emit('editing_indicator', {
       userId: socket.userId,
       user: {
         id: socket.user._id,
@@ -340,6 +362,22 @@ class SocketService {
       isEditing,
       timestamp: new Date()
     });
+    
+    // Also emit to specific resource room
+    socket.to(resourceRoom).emit('editing_indicator', {
+      userId: socket.userId,
+      user: {
+        id: socket.user._id,
+        name: socket.user.name,
+        role: socket.user.role
+      },
+      resource,
+      resourceId,
+      isEditing,
+      timestamp: new Date()
+    });
+    
+    console.log(`📡 Broadcasting editing indicator: ${socket.user.name} ${isEditing ? 'started' : 'stopped'} editing ${resource} ${resourceId}`);
   }
 
   handleDisconnect(socket) {

@@ -160,42 +160,65 @@ export const RealtimeProvider = ({ children }) => {
     });
 
     newSocket.on('viewing_indicator', (data) => {
+      console.log('👁️ Viewing indicator received:', data);
       setViewingUsers(prev => {
         const newMap = new Map(prev);
         const key = `${data.resource}_${data.resourceId}`;
         const current = newMap.get(key) || [];
-        const exists = current.find(u => u.userId === data.userId);
+        const userId = data.userId || data.user?.id || data.user?._id;
         
-        if (!exists) {
-          newMap.set(key, [...current, data]);
-        }
+        // Remove existing entry for this user
+        const filtered = current.filter(u => {
+          const uId = u.userId || u.user?.id || u.user?._id;
+          return uId !== userId;
+        });
+        
+        // Add new entry (with timestamp for timeout later)
+        newMap.set(key, [...filtered, {
+          ...data,
+          userId: userId,
+          receivedAt: Date.now()
+        }]);
         
         return newMap;
       });
     });
 
     newSocket.on('editing_indicator', (data) => {
+      console.log('✏️ Editing indicator received:', data);
       setEditingUsers(prev => {
         const newMap = new Map(prev);
         const key = `${data.resource}_${data.resourceId}`;
+        const userId = data.userId || data.user?.id || data.user?._id;
         
         if (data.isEditing) {
           // Add or update editing user
           const current = newMap.get(key) || [];
-          const exists = current.find(u => u.userId === data.userId);
+          const exists = current.find(u => {
+            const uId = u.userId || u.user?.id || u.user?._id;
+            return uId === userId;
+          });
           if (!exists) {
-            newMap.set(key, [...current, data]);
+            newMap.set(key, [...current, {
+              ...data,
+              userId: userId,
+              receivedAt: Date.now()
+            }]);
           } else {
             // Update existing entry
-            const updated = current.map(u => 
-              u.userId === data.userId ? data : u
-            );
+            const updated = current.map(u => {
+              const uId = u.userId || u.user?.id || u.user?._id;
+              return uId === userId ? { ...data, userId: userId, receivedAt: Date.now() } : u;
+            });
             newMap.set(key, updated);
           }
         } else {
           // Remove editing user
           const current = newMap.get(key) || [];
-          const filtered = current.filter(u => u.userId !== data.userId);
+          const filtered = current.filter(u => {
+            const uId = u.userId || u.user?.id || u.user?._id;
+            return uId !== userId;
+          });
           if (filtered.length === 0) {
             newMap.delete(key);
           } else {
@@ -386,12 +409,32 @@ export const RealtimeProvider = ({ children }) => {
 
   const getViewingUsers = (resource, resourceId) => {
     const key = `${resource}_${resourceId}`;
-    return viewingUsers.get(key) || [];
+    const users = viewingUsers.get(key) || [];
+    const now = Date.now();
+    // Filter out stale viewing indicators (older than 60 seconds)
+    return users.filter(u => {
+      const receivedAt = u.receivedAt || u.timestamp;
+      if (receivedAt) {
+        const age = now - (typeof receivedAt === 'number' ? receivedAt : new Date(receivedAt).getTime());
+        return age < 60000; // 60 seconds
+      }
+      return true; // Keep if no timestamp
+    });
   };
 
   const getEditingUsers = (resource, resourceId) => {
     const key = `${resource}_${resourceId}`;
-    return editingUsers.get(key) || [];
+    const users = editingUsers.get(key) || [];
+    const now = Date.now();
+    // Filter out stale editing indicators (older than 120 seconds)
+    return users.filter(u => {
+      const receivedAt = u.receivedAt || u.timestamp;
+      if (receivedAt) {
+        const age = now - (typeof receivedAt === 'number' ? receivedAt : new Date(receivedAt).getTime());
+        return age < 120000; // 120 seconds
+      }
+      return true; // Keep if no timestamp
+    });
   };
 
   const clearNotifications = () => {

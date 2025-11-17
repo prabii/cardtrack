@@ -57,7 +57,7 @@ const billPaymentSchema = new mongoose.Schema({
     currency: {
       type: String,
       default: 'USD',
-      enum: ['USD', 'EUR', 'GBP', 'CAD']
+      enum: ['USD', 'EUR', 'GBP', 'CAD', 'INR']
     },
     paymentMethod: {
       type: String,

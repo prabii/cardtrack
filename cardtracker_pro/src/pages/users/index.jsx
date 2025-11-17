@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 import { 
   PlusIcon, 
   MagnifyingGlassIcon, 
@@ -12,6 +13,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 const Users = () => {
+  const { user } = useAuth();
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -145,13 +147,15 @@ const Users = () => {
             </h1>
             <p className="text-gray-600 mt-2">Manage users, roles, and permissions</p>
           </div>
-          <Link
-            to="/users/add"
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
-          >
-            <PlusIcon className="h-5 w-5" />
-            Add User
-          </Link>
+          {user?.role === 'admin' && (
+            <Link
+              to="/users/add"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+            >
+              <PlusIcon className="h-5 w-5" />
+              Add User
+            </Link>
+          )}
         </div>
       </div>
 

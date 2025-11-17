@@ -35,6 +35,7 @@ import BillPaymentDetail from './pages/bill-payments/[id]';
 import AddBillPayment from './pages/bill-payments/add';
 import EditBillPayment from './pages/bill-payments/[id]/edit';
 import Users from './pages/users/index';
+import AddUser from './pages/users/add';
 import Reports from './pages/reports/index';
 import CompanyDashboard from './pages/company/index';
 import CompanyProfits from './pages/company/profits';
@@ -417,6 +418,18 @@ const Routes = () => {
                        <RoleBasedRoute allowedRoles={['admin', 'manager']}>
                          <Layout>
                            <Users />
+                         </Layout>
+                       </RoleBasedRoute>
+                     </ProtectedRoute>
+                   }
+                 />
+                 <Route
+                   path="/users/add"
+                   element={
+                     <ProtectedRoute>
+                       <RoleBasedRoute allowedRoles={['admin']}>
+                         <Layout>
+                           <AddUser />
                          </Layout>
                        </RoleBasedRoute>
                      </ProtectedRoute>
