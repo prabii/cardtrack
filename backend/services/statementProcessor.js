@@ -110,11 +110,11 @@ class StatementProcessor {
       if (statement.bankName && statement.cardNumber) {
         try {
           // Try to find bank by exact match first
+          // Note: Bank model doesn't have isDeleted field, so we don't filter by it
           let bank = await Bank.findOne({
             cardholder: statement.cardholder,
             bankName: statement.bankName,
-            cardNumber: statement.cardNumber,
-            isDeleted: false
+            cardNumber: statement.cardNumber
           });
 
           // If not found, try matching by bankName and last 4 digits
@@ -127,8 +127,7 @@ class StatementProcessor {
                   { $substr: ['$cardNumber', -4, 4] },
                   statement.cardDigits
                 ]
-              },
-              isDeleted: false
+              }
             });
           }
 
@@ -136,8 +135,7 @@ class StatementProcessor {
           if (!bank) {
             bank = await Bank.findOne({
               cardholder: statement.cardholder,
-              bankName: statement.bankName,
-              isDeleted: false
+              bankName: statement.bankName
             });
           }
 
