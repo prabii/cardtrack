@@ -23,10 +23,19 @@ router.get('/dashboard', async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
     
-    // Build date filter
+    // Build date filter for models using createdAt (Statement, BillPayment)
     const dateFilter = {};
     if (startDate && endDate) {
       dateFilter.createdAt = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
+    }
+    
+    // Build date filter for Transaction model (uses 'date' field, not 'createdAt')
+    const transactionDateFilter = { isDeleted: { $ne: true } };
+    if (startDate && endDate) {
+      transactionDateFilter.date = {
         $gte: new Date(startDate),
         $lte: new Date(endDate)
       };
@@ -44,7 +53,7 @@ router.get('/dashboard', async (req, res) => {
     ] = await Promise.all([
       Cardholder.countDocuments({ isDeleted: false }),
       Statement.countDocuments({ ...dateFilter, isDeleted: false }),
-      Transaction.countDocuments({ ...dateFilter, isDeleted: { $ne: true } }),
+      Transaction.countDocuments(transactionDateFilter),
       BillPayment.countDocuments({ ...dateFilter, isDeleted: false }),
       Bank.countDocuments({}), // Bank doesn't have isDeleted field
       User.countDocuments({ isActive: true })
@@ -656,10 +665,18 @@ router.get('/export/:type', [
         break;
 
       case 'transactions':
-        data = await Transaction.find(dateFilter)
+        // Transaction model uses 'date' field, not 'createdAt'
+        const transactionFilter = { isDeleted: { $ne: true } };
+        if (startDate && endDate) {
+          transactionFilter.date = {
+            $gte: new Date(startDate),
+            $lte: new Date(endDate)
+          };
+        }
+        data = await Transaction.find(transactionFilter)
           .populate('cardholder', 'name email')
-          .populate('bank', 'bankName accountNumber')
-          .sort({ createdAt: -1 });
+          .populate('statement', 'month year cardDigits bankName')
+          .sort({ date: -1 });
         filename = 'transactions_report';
         break;
 
