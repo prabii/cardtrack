@@ -47,9 +47,12 @@ router.get('/', verifyToken, async (req, res) => {
     const sort = {};
     sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
+    // Add isDeleted filter to exclude soft-deleted transactions
+    filter.isDeleted = { $ne: true };
+
     const transactions = await Transaction.find(filter)
       .populate('cardholder', 'name email phone')
-      .populate('statement', 'month year')
+      .populate('statement', 'month year cardDigits bankName')
       .populate('verifiedBy', 'name email')
       .sort(sort)
       .skip(skip)
@@ -58,8 +61,14 @@ router.get('/', verifyToken, async (req, res) => {
     const total = await Transaction.countDocuments(filter);
 
     // Get statistics
+    // Ensure isDeleted filter is applied to aggregation
+    const aggregateFilter = { ...filter };
+    if (!aggregateFilter.isDeleted) {
+      aggregateFilter.isDeleted = { $ne: true };
+    }
+    
     const stats = await Transaction.aggregate([
-      { $match: filter },
+      { $match: aggregateFilter },
       {
         $group: {
           _id: null,
@@ -89,9 +98,12 @@ router.get('/', verifyToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching transactions:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Filter used:', filter);
     res.status(500).json({
       success: false,
-      message: 'Server error while fetching transactions'
+      message: 'Server error while fetching transactions',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -111,6 +123,8 @@ router.get('/statistics/summary', verifyToken, async (req, res) => {
       filters.startDate = startDate;
       filters.endDate = endDate;
     }
+    // Add isDeleted filter
+    filters.isDeleted = { $ne: true };
 
     const stats = await Transaction.getStatistics(filters);
     

@@ -221,7 +221,14 @@ transactionSchema.statics.findByCardholder = function(cardholderId, filters = {}
 
 // Static method to get transaction statistics
 transactionSchema.statics.getStatistics = function(filters = {}) {
-  const matchStage = { isDeleted: false };
+  const matchStage = {};
+  
+  // Handle isDeleted filter - use the one from filters if provided, otherwise default
+  if (filters.isDeleted) {
+    matchStage.isDeleted = filters.isDeleted;
+  } else {
+    matchStage.isDeleted = { $ne: true };
+  }
   
   if (filters.cardholder) {
     matchStage.cardholder = filters.cardholder;
@@ -236,6 +243,10 @@ transactionSchema.statics.getStatistics = function(filters = {}) {
       $gte: new Date(filters.startDate),
       $lte: new Date(filters.endDate)
     };
+  } else if (filters.startDate) {
+    matchStage.date = { $gte: new Date(filters.startDate) };
+  } else if (filters.endDate) {
+    matchStage.date = { $lte: new Date(filters.endDate) };
   }
   
   return this.aggregate([
