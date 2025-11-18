@@ -199,7 +199,15 @@ router.post('/', upload.single('statement'), [
       await fs.unlink(req.file.path);
       return res.status(400).json({ 
         success: false, 
-        message: 'Statement for this month and card already exists' 
+        message: `Statement for ${month} ${year} (Card ending in ${cardDigits}) already exists. Please delete the existing statement first or use a different month/year.`,
+        existingStatementId: existingStatement._id,
+        existingStatement: {
+          id: existingStatement._id,
+          month: existingStatement.month,
+          year: existingStatement.year,
+          status: existingStatement.status,
+          createdAt: existingStatement.createdAt
+        }
       });
     }
 

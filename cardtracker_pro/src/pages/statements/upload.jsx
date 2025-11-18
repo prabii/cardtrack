@@ -216,7 +216,22 @@ const UploadStatement = () => {
       console.error('Error headers:', error.response?.headers);
       
       const errorMessage = error.response?.data?.message || error.message || 'Failed to upload statement. Please try again.';
-      setErrors({ submit: errorMessage });
+      
+      // If duplicate statement error, provide more helpful message
+      if (error.response?.status === 400 && error.response?.data?.existingStatement) {
+        const existing = error.response.data.existingStatement;
+        setErrors({ 
+          submit: errorMessage,
+          duplicate: {
+            id: existing.id,
+            month: existing.month,
+            year: existing.year,
+            status: existing.status
+          }
+        });
+      } else {
+        setErrors({ submit: errorMessage });
+      }
     } finally {
       setIsSubmitting(false);
       console.log('=== FORM SUBMISSION END ===');
@@ -253,9 +268,38 @@ const UploadStatement = () => {
 
           {/* Error Message */}
           {errors.submit && (
-            <div className="mb-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg flex items-center space-x-3">
-              <AlertCircle className="w-5 h-5" />
-              <span>{errors.submit}</span>
+            <div className="mb-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+              <div className="flex items-start space-x-3">
+                <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="font-medium">{errors.submit}</p>
+                  {errors.duplicate && (
+                    <div className="mt-3 p-3 bg-red-50 rounded border border-red-200">
+                      <p className="text-sm font-semibold mb-2">Existing Statement Details:</p>
+                      <ul className="text-sm space-y-1">
+                        <li><strong>Month/Year:</strong> {errors.duplicate.month} {errors.duplicate.year}</li>
+                        <li><strong>Status:</strong> <span className="capitalize">{errors.duplicate.status}</span></li>
+                      </ul>
+                      <div className="mt-3">
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/statements/${errors.duplicate.id}`)}
+                          className="text-sm text-blue-600 hover:text-blue-800 underline mr-4"
+                        >
+                          View Existing Statement
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => navigate('/statements')}
+                          className="text-sm text-blue-600 hover:text-blue-800 underline"
+                        >
+                          Go to Statements List
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
