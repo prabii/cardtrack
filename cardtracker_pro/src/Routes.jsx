@@ -36,9 +36,14 @@ import AddBillPayment from './pages/bill-payments/add';
 import EditBillPayment from './pages/bill-payments/[id]/edit';
 import Users from './pages/users/index';
 import AddUser from './pages/users/add';
+import Settings from './pages/settings';
 import Reports from './pages/reports/index';
 import CompanyDashboard from './pages/company/index';
 import CompanyProfits from './pages/company/profits';
+import AddCompany from './pages/company/add';
+import AddExpense from './pages/company/add-expense';
+import AddFDCard from './pages/company/add-fd-card';
+import AddProject from './pages/company/add-project';
 import Gateways from './pages/gateways/index';
 import Alerts from './pages/alerts/index';
 
@@ -436,7 +441,67 @@ const Routes = () => {
                    }
                  />
                  <Route
+                   path="/settings"
+                   element={
+                     <ProtectedRoute>
+                       <RoleBasedRoute allowedRoles={['admin', 'manager', 'member', 'gateway_manager', 'operator']}>
+                         <Layout>
+                           <Settings />
+                         </Layout>
+                       </RoleBasedRoute>
+                     </ProtectedRoute>
+                   }
+                 />
+                 <Route
                    path="/reports"
+                   element={
+                     <ProtectedRoute>
+                       <RoleBasedRoute allowedRoles={['admin', 'manager', 'member', 'operator']}>
+                         <Layout>
+                           <Reports />
+                         </Layout>
+                       </RoleBasedRoute>
+                     </ProtectedRoute>
+                   }
+                 />
+                 <Route
+                   path="/reports/cardholders"
+                   element={
+                     <ProtectedRoute>
+                       <RoleBasedRoute allowedRoles={['admin', 'manager', 'member', 'operator']}>
+                         <Layout>
+                           <Reports />
+                         </Layout>
+                       </RoleBasedRoute>
+                     </ProtectedRoute>
+                   }
+                 />
+                 <Route
+                   path="/reports/transactions"
+                   element={
+                     <ProtectedRoute>
+                       <RoleBasedRoute allowedRoles={['admin', 'manager', 'member', 'operator']}>
+                         <Layout>
+                           <Reports />
+                         </Layout>
+                       </RoleBasedRoute>
+                     </ProtectedRoute>
+                   }
+                 />
+                 <Route
+                   path="/reports/bill-payments"
+                   element={
+                     <ProtectedRoute>
+                       <RoleBasedRoute allowedRoles={['admin', 'manager', 'member', 'operator']}>
+                         <Layout>
+                           <Reports />
+                         </Layout>
+                       </RoleBasedRoute>
+                     </ProtectedRoute>
+                   }
+                 />
+                 <Route
+                   path="/reports/statements"
                    element={
                      <ProtectedRoute>
                        <RoleBasedRoute allowedRoles={['admin', 'manager', 'member', 'operator']}>
@@ -454,6 +519,54 @@ const Routes = () => {
                        <RoleBasedRoute allowedRoles={['admin', 'manager']}>
                          <Layout>
                            <CompanyDashboard />
+                         </Layout>
+                       </RoleBasedRoute>
+                     </ProtectedRoute>
+                   }
+                 />
+                 <Route
+                   path="/company/add"
+                   element={
+                     <ProtectedRoute>
+                       <RoleBasedRoute allowedRoles={['admin', 'manager']}>
+                         <Layout>
+                           <AddCompany />
+                         </Layout>
+                       </RoleBasedRoute>
+                     </ProtectedRoute>
+                   }
+                 />
+                 <Route
+                   path="/company/add-expense"
+                   element={
+                     <ProtectedRoute>
+                       <RoleBasedRoute allowedRoles={['admin', 'manager']}>
+                         <Layout>
+                           <AddExpense />
+                         </Layout>
+                       </RoleBasedRoute>
+                     </ProtectedRoute>
+                   }
+                 />
+                 <Route
+                   path="/company/add-fd-card"
+                   element={
+                     <ProtectedRoute>
+                       <RoleBasedRoute allowedRoles={['admin', 'manager']}>
+                         <Layout>
+                           <AddFDCard />
+                         </Layout>
+                       </RoleBasedRoute>
+                     </ProtectedRoute>
+                   }
+                 />
+                 <Route
+                   path="/company/add-project"
+                   element={
+                     <ProtectedRoute>
+                       <RoleBasedRoute allowedRoles={['admin', 'manager']}>
+                         <Layout>
+                           <AddProject />
                          </Layout>
                        </RoleBasedRoute>
                      </ProtectedRoute>

@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useRealtime } from '../../contexts/RealtimeContext';
 import { getCardholders, getStatusColor, deleteCardholder, updateCardholderStatus } from '../../utils/cardholderApi';
 import { hasPermission, PERMISSIONS } from '../../utils/permissions';
+import { formatAmount } from '../../utils/transactionApi';
 import { 
   Users, 
   Plus, 
@@ -69,9 +70,17 @@ const Cardholders = () => {
       });
       
       if (response.success) {
-        console.log('Cardholders loaded:', response.data);
-        console.log('Outstanding amounts:', response.data?.map(c => ({ name: c.name, outstanding: c.totalOutstanding || c.outstandingAmount })));
-        setCardholders(response.data || []);
+        const cardholdersData = response.data || [];
+        console.log('Cardholders loaded:', cardholdersData.length);
+        console.log('Outstanding amounts:', cardholdersData.map(c => ({ 
+          name: c.name, 
+          outstanding: c.totalOutstanding || c.outstandingAmount,
+          currency: c.currency || 'USD',
+          banks: c.cardCount || 0
+        })));
+        console.log('Stats from backend:', response.stats);
+        console.log('Total outstanding from backend:', response.stats?.totalOutstanding);
+        setCardholders(cardholdersData);
         setStats(response.stats || {});
       } else {
         setError(response.message || 'Failed to load cardholders');
@@ -321,7 +330,28 @@ const Cardholders = () => {
                 <div>
                   <p className="text-sm font-medium text-gray-600">Total Outstanding</p>
                   <p className="text-3xl font-bold text-red-600">
-                    ${cardholders.reduce((sum, c) => sum + (c.totalOutstanding || c.outstandingAmount || 0), 0).toLocaleString()}
+                    {(() => {
+                      // Use backend calculated total if available, otherwise calculate from cardholders
+                      const backendTotal = stats?.totalOutstanding;
+                      const calculatedTotal = cardholders.reduce((sum, c) => sum + (c.totalOutstanding || c.outstandingAmount || 0), 0);
+                      const totalOutstanding = backendTotal !== undefined ? backendTotal : calculatedTotal;
+                      
+                      // Detect currency - use INR if any cardholder has INR, otherwise USD
+                      const currencies = cardholders
+                        .map(c => c.currency || 'USD')
+                        .filter((c, i, arr) => arr.indexOf(c) === i); // unique currencies
+                      const currency = currencies.includes('INR') ? 'INR' : (currencies[0] || 'USD');
+                      
+                      console.log('Total Outstanding calculation:', {
+                        backendTotal,
+                        calculatedTotal,
+                        finalTotal: totalOutstanding,
+                        currency,
+                        cardholdersCount: cardholders.length
+                      });
+                      
+                      return formatAmount(totalOutstanding, currency);
+                    })()}
                   </p>
                 </div>
                 <CreditCard className="w-8 h-8 text-red-600" />
@@ -420,7 +450,14 @@ const Cardholders = () => {
                         {cardholder.cardCount || cardholder.banks?.length || cardholder.cardsCount || 0} cards
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        ${(cardholder.totalOutstanding || cardholder.outstandingAmount || 0).toLocaleString()}
+                        {(() => {
+                          const outstanding = cardholder.totalOutstanding || cardholder.outstandingAmount || 0;
+                          // Try to detect currency from cardholder's banks or statements
+                          // Default to INR, but could be USD if statements have USD currency
+                          const currency = cardholder.currency || 'INR';
+                          console.log(`Cardholder ${cardholder.name}: outstanding=${outstanding}, currency=${currency}`);
+                          return formatAmount(outstanding, currency);
+                        })()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {cardholder.lastStatementDate ? (

@@ -294,7 +294,9 @@ export const getCategoryLabel = (category) => {
  * @returns {string} - Formatted amount
  */
 export const formatAmount = (amount, currency = 'USD') => {
-  return new Intl.NumberFormat('en-US', {
+  // Use appropriate locale based on currency
+  const locale = currency === 'INR' ? 'en-IN' : 'en-US';
+  return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: currency
   }).format(amount);

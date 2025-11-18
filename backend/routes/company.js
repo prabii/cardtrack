@@ -137,6 +137,256 @@ router.get('/dashboard', async (req, res) => {
   }
 });
 
+// @route   GET /api/company/companies
+// @desc    Get all companies
+router.get('/companies', async (req, res) => {
+  try {
+    const { page = 1, limit = 10, isActive, search } = req.query;
+    
+    const filter = {};
+    if (isActive !== undefined) {
+      filter.isActive = isActive === 'true';
+    }
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { industry: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const companies = await Company.find(filter)
+      .populate('createdBy', 'name email')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await Company.countDocuments(filter);
+
+    res.json({
+      success: true,
+      data: {
+        companies,
+        pagination: {
+          current: parseInt(page),
+          pages: Math.ceil(total / parseInt(limit)),
+          total,
+          limit: parseInt(limit)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get companies error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// @route   POST /api/company/companies
+// @desc    Create new company
+router.post('/companies', requirePermission('manage_company'), [
+  body('name')
+    .notEmpty().withMessage('Company name is required')
+    .trim()
+    .isLength({ min: 1, max: 100 }).withMessage('Company name must be between 1 and 100 characters'),
+  body('description')
+    .optional({ checkFalsy: true })
+    .trim()
+    .isLength({ max: 500 }).withMessage('Description cannot exceed 500 characters'),
+  body('industry')
+    .optional({ checkFalsy: true })
+    .trim(),
+  body('website')
+    .optional({ checkFalsy: true })
+    .trim()
+    .custom((value) => {
+      if (!value || value === '') return true;
+      try {
+        new URL(value);
+        return true;
+      } catch {
+        return false;
+      }
+    }).withMessage('Please enter a valid URL'),
+  body('email')
+    .optional({ checkFalsy: true })
+    .trim()
+    .isEmail().normalizeEmail().withMessage('Please enter a valid email'),
+  body('phone')
+    .optional({ checkFalsy: true })
+    .trim(),
+  body('address.street')
+    .optional({ checkFalsy: true })
+    .trim(),
+  body('address.city')
+    .optional({ checkFalsy: true })
+    .trim(),
+  body('address.state')
+    .optional({ checkFalsy: true })
+    .trim(),
+  body('address.zipCode')
+    .optional({ checkFalsy: true })
+    .trim(),
+  body('address.country')
+    .optional({ checkFalsy: true })
+    .trim(),
+  body('isActive')
+    .optional()
+    .isBoolean().withMessage('isActive must be a boolean')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const {
+      name,
+      description,
+      industry,
+      website,
+      email,
+      phone,
+      address,
+      isActive = true
+    } = req.body;
+
+    // Check if company with same name already exists
+    const existingCompany = await Company.findOne({ name: name.trim() });
+    if (existingCompany) {
+      return res.status(400).json({
+        success: false,
+        message: 'Company with this name already exists'
+      });
+    }
+
+    const company = new Company({
+      name: name.trim(),
+      description: description?.trim() || '',
+      industry: industry?.trim() || '',
+      website: website?.trim() || '',
+      email: email?.toLowerCase().trim() || '',
+      phone: phone?.trim() || '',
+      address: address || {},
+      isActive,
+      createdBy: req.user.id
+    });
+
+    await company.save();
+
+    res.status(201).json({
+      success: true,
+      message: 'Company created successfully',
+      data: company
+    });
+  } catch (error) {
+    console.error('Create company error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// @route   PUT /api/company/companies/:id
+// @desc    Update company
+router.put('/companies/:id', requirePermission('manage_company'), [
+  body('name').optional().trim().isLength({ min: 1, max: 100 }),
+  body('description').optional().trim().isLength({ max: 500 }),
+  body('website').optional().isURL(),
+  body('email').optional().isEmail().normalizeEmail(),
+  body('isActive').optional().isBoolean()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const company = await Company.findById(req.params.id);
+    if (!company) {
+      return res.status(404).json({
+        success: false,
+        message: 'Company not found'
+      });
+    }
+
+    const {
+      name,
+      description,
+      industry,
+      website,
+      email,
+      phone,
+      address,
+      isActive
+    } = req.body;
+
+    if (name) company.name = name.trim();
+    if (description !== undefined) company.description = description.trim();
+    if (industry !== undefined) company.industry = industry.trim();
+    if (website !== undefined) company.website = website.trim();
+    if (email !== undefined) company.email = email.toLowerCase().trim();
+    if (phone !== undefined) company.phone = phone.trim();
+    if (address) company.address = { ...company.address, ...address };
+    if (isActive !== undefined) company.isActive = isActive;
+
+    await company.save();
+
+    res.json({
+      success: true,
+      message: 'Company updated successfully',
+      data: company
+    });
+  } catch (error) {
+    console.error('Update company error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// @route   DELETE /api/company/companies/:id
+// @desc    Delete company
+router.delete('/companies/:id', requirePermission('manage_company'), async (req, res) => {
+  try {
+    const company = await Company.findById(req.params.id);
+    if (!company) {
+      return res.status(404).json({
+        success: false,
+        message: 'Company not found'
+      });
+    }
+
+    // Check if company has associated data
+    const [projectsCount, expensesCount, fdCardsCount] = await Promise.all([
+      Project.countDocuments({ company: company._id }),
+      Expense.countDocuments({ company: company._id }),
+      FDCard.countDocuments({ company: company._id })
+    ]);
+
+    if (projectsCount > 0 || expensesCount > 0 || fdCardsCount > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete company. It has ${projectsCount} projects, ${expensesCount} expenses, and ${fdCardsCount} FD cards associated with it.`
+      });
+    }
+
+    await Company.findByIdAndDelete(req.params.id);
+
+    res.json({
+      success: true,
+      message: 'Company deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete company error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 // @route   GET /api/company/profits
 // @desc    Get company profits
 router.get('/profits', [

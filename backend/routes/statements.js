@@ -225,18 +225,19 @@ router.post('/', upload.single('statement'), [
 
     await statement.save();
 
-    // Auto-process statement if uploaded by member (extract transactions automatically)
+    // Auto-process statement for all users (extract transactions automatically)
     let processingResult = null;
-    if (req.user.role === 'member') {
-      try {
-        console.log('Auto-processing statement for member upload');
-        const StatementProcessor = require('../services/statementProcessor');
-        processingResult = await StatementProcessor.processStatement(statement._id.toString(), req.user.id);
-        console.log('Auto-processing completed:', processingResult);
-      } catch (processError) {
-        console.error('Auto-processing failed (non-critical):', processError);
-        // Don't fail the upload if processing fails - user can process manually later
-      }
+    try {
+      console.log('Auto-processing statement after upload');
+      processingResult = await StatementProcessor.processStatement(statement._id.toString(), req.user.id);
+      console.log('Auto-processing completed:', processingResult);
+    } catch (processError) {
+      console.error('Auto-processing failed (non-critical):', processError);
+      // Don't fail the upload if processing fails - user can process manually later
+      // Set status back to uploaded so user can retry
+      statement.status = 'uploaded';
+      statement.processingError = processError.message || 'Auto-processing failed';
+      await statement.save();
     }
 
     // Populate the response

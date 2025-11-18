@@ -94,10 +94,12 @@ export const createGatewayTransaction = async (gatewayId, transactionData) => {
 
 // Utility functions
 export const formatCurrency = (amount, currency = 'USD') => {
-  return new Intl.NumberFormat('en-US', {
+  // Use appropriate locale based on currency
+  const locale = currency === 'INR' ? 'en-IN' : 'en-US';
+  return new Intl.NumberFormat(locale, {
     style: 'currency',
-    currency: currency
-  }).format(amount);
+    currency: currency || 'USD'
+  }).format(amount || 0);
 };
 
 export const formatDate = (date) => {

@@ -55,6 +55,47 @@ export const getCompanyDashboard = async (params = {}) => {
   }
 };
 
+// Companies
+export const getCompanies = async (params = {}) => {
+  try {
+    const response = await api.get('/companies', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Get companies error:', error);
+    throw error;
+  }
+};
+
+export const createCompany = async (data) => {
+  try {
+    const response = await api.post('/companies', data);
+    return response.data;
+  } catch (error) {
+    console.error('Create company error:', error);
+    throw error;
+  }
+};
+
+export const updateCompany = async (id, data) => {
+  try {
+    const response = await api.put(`/companies/${id}`, data);
+    return response.data;
+  } catch (error) {
+    console.error('Update company error:', error);
+    throw error;
+  }
+};
+
+export const deleteCompany = async (id) => {
+  try {
+    const response = await api.delete(`/companies/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error('Delete company error:', error);
+    throw error;
+  }
+};
+
 // Company Profits
 export const getCompanyProfits = async (params = {}) => {
   try {

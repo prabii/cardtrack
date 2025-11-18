@@ -105,8 +105,9 @@ const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
-  // Check authentication status on app load
+  // Check authentication status on app load (non-blocking)
   useEffect(() => {
+    // Use setTimeout to make this non-blocking for initial render
     const checkAuthStatus = () => {
       try {
         const authenticated = isAuthenticated();
@@ -134,6 +135,7 @@ export const AuthProvider = ({ children }) => {
       }
     };
 
+    // Run immediately but don't block render
     checkAuthStatus();
   }, []);
 

@@ -93,10 +93,10 @@ router.get('/cardholder/:cardholderId', [
     }
 
     // Get all banks for this cardholder
+    // Note: Bank model doesn't have isDeleted field, so we don't filter by it
     const Bank = require('../models/Bank');
     const banks = await Bank.find({ 
-      cardholder: cardholderId, 
-      isDeleted: false 
+      cardholder: cardholderId
     }).populate('cardholder', 'name email');
 
     if (banks.length === 0) {

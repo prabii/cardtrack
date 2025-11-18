@@ -19,10 +19,11 @@ const Login = () => {
   // Get the intended destination from location state
   const from = location.state?.from?.pathname || '/dashboard';
 
-  // Clear errors when component mounts
+  // Clear errors when component mounts (only once)
   useEffect(() => {
     clearError();
-  }, [clearError]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Force logout if user is already authenticated (for testing)
   const handleForceLogout = () => {

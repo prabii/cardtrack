@@ -27,7 +27,8 @@ import {
   AlertTriangle,
   CheckCircle,
   Clock,
-  X
+  X,
+  ExternalLink
 } from 'lucide-react';
 
 const Statements = () => {
@@ -66,7 +67,15 @@ const Statements = () => {
       console.log('Statements response:', response);
       
       if (response.success) {
-        setStatements(response.data || []);
+        const statementsData = response.data || [];
+        // Ensure all statements have _id
+        const validStatements = statementsData.map(stmt => ({
+          ...stmt,
+          _id: stmt._id || stmt.id
+        })).filter(stmt => stmt._id); // Filter out any without ID
+        
+        console.log(`Loaded ${validStatements.length} statements`);
+        setStatements(validStatements);
         setStats(response.stats || {});
       } else {
         setError(response.message || 'Failed to load statements');
@@ -98,30 +107,68 @@ const Statements = () => {
     navigate('/statements/upload');
   };
 
-  const handleViewStatement = (statement) => {
-    navigate(`/statements/${statement._id}`);
+  const handleViewStatement = (statement, e) => {
+    if (!statement || !statement._id) {
+      alert('Invalid statement data');
+      return;
+    }
+
+    const statementId = statement._id || statement.id;
+    if (!statementId) {
+      alert('Statement ID is missing');
+      return;
+    }
+
+    // Open in new tab if Ctrl/Cmd key is pressed, otherwise navigate normally
+    if (e?.ctrlKey || e?.metaKey) {
+      window.open(`/statements/${statementId}`, '_blank');
+    } else {
+      navigate(`/statements/${statementId}`);
+    }
   };
 
   const handleDownloadStatement = async (statement) => {
+    if (!statement || !statement._id) {
+      alert('Invalid statement data');
+      return;
+    }
+
     try {
-      const blob = await downloadStatement(statement._id);
-      downloadFileFromBlob(blob, statement.fileName);
+      const statementId = statement._id || statement.id;
+      const fileName = statement.fileName || statement.filePath?.split('/').pop() || `statement-${statementId}.pdf`;
+      
+      console.log('Downloading statement:', statementId, fileName);
+      const blob = await downloadStatement(statementId);
+      
+      if (!blob || blob.size === 0) {
+        alert('Downloaded file is empty');
+        return;
+      }
+      
+      downloadFileFromBlob(blob, fileName);
     } catch (error) {
       console.error('Error downloading statement:', error);
-      alert('Failed to download statement');
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to download statement';
+      alert(`Failed to download statement: ${errorMessage}`);
     }
   };
 
   const handleDeleteStatement = async (statement) => {
-    if (window.confirm('Are you sure you want to delete this statement?')) {
+    if (!statement || !statement._id) {
+      alert('Invalid statement data');
+      return;
+    }
+
+    if (window.confirm('Are you sure you want to delete this statement? This action cannot be undone.')) {
       try {
-        // TODO: Implement delete functionality
-        console.log('Delete statement:', statement._id);
+        const { deleteStatement } = await import('../../utils/statementApi');
+        await deleteStatement(statement._id);
         alert('Statement deleted successfully');
         loadStatements();
       } catch (error) {
         console.error('Error deleting statement:', error);
-        alert('Failed to delete statement');
+        const errorMessage = error.response?.data?.message || error.message || 'Failed to delete statement';
+        alert(`Failed to delete statement: ${errorMessage}`);
       }
     }
   };
@@ -449,9 +496,21 @@ const Statements = () => {
                             <Button 
                               variant="ghost" 
                               size="sm" 
-                              onClick={() => handleViewStatement(statement)}
+                              onClick={(e) => handleViewStatement(statement, e)}
+                              title="View Statement (Ctrl+Click to open in new tab)"
                             >
                               <Eye className="w-4 h-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                window.open(`/statements/${statement._id}`, '_blank');
+                              }}
+                              title="Open in new tab"
+                            >
+                              <ExternalLink className="w-4 h-4" />
                             </Button>
                             <Button 
                               variant="ghost" 

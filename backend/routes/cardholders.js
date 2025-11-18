@@ -66,28 +66,110 @@ router.get('/', [
     const cardholdersWithOutstanding = await Promise.all(
       cardholders.map(async (cardholder) => {
         // Get all banks for this cardholder
+        // Note: Bank model doesn't have isDeleted field, so we don't filter by it
         const banks = await Bank.find({ 
-          cardholder: cardholder._id,
-          isDeleted: false 
+          cardholder: cardholder._id
         });
         
         // Calculate total outstanding from all banks
-        const totalOutstanding = banks.reduce((sum, bank) => {
-          const bankOutstanding = bank.outstandingAmount || 0;
-          console.log(`Bank ${bank.bankName} (${bank.cardNumber}): outstandingAmount = ${bankOutstanding}`);
-          return sum + bankOutstanding;
-        }, 0);
+        // Also check statements if bank outstanding is 0 or not set
+        let totalOutstanding = 0;
+        
+        for (const bank of banks) {
+          let bankOutstanding = bank.outstandingAmount || 0;
+          
+          // If bank outstanding is 0 or not set, try to get from latest statement (any status)
+          if (!bankOutstanding || bankOutstanding === 0) {
+            // First try to find statement matching this specific bank (by bankName and cardDigits)
+            let bankStatement = await Statement.findOne({
+              cardholder: cardholder._id,
+              bankName: bank.bankName,
+              $or: [
+                { cardDigits: bank.cardNumber && bank.cardNumber.slice(-4) ? bank.cardNumber.slice(-4) : '' },
+                { cardNumber: bank.cardNumber }
+              ],
+              isDeleted: false,
+              'extractedData.outstandingAmount': { $exists: true, $ne: null, $gt: 0 }
+            }).sort({ createdAt: -1 });
+            
+            // If no bank-specific statement found with outstandingAmount > 0, try any statement for this cardholder
+            if (!bankStatement || !bankStatement.extractedData?.outstandingAmount || bankStatement.extractedData.outstandingAmount === 0) {
+              bankStatement = await Statement.findOne({
+                cardholder: cardholder._id,
+                isDeleted: false,
+                'extractedData.outstandingAmount': { $exists: true, $ne: null, $gt: 0 }
+              }).sort({ createdAt: -1 });
+            }
+            
+            // If still no statement with outstandingAmount > 0, try without the $gt: 0 filter
+            if (!bankStatement || !bankStatement.extractedData?.outstandingAmount) {
+              bankStatement = await Statement.findOne({
+                cardholder: cardholder._id,
+                bankName: bank.bankName,
+                isDeleted: false,
+                'extractedData.outstandingAmount': { $exists: true, $ne: null }
+              }).sort({ createdAt: -1 });
+            }
+            
+            if (bankStatement && bankStatement.extractedData && bankStatement.extractedData.outstandingAmount !== undefined && bankStatement.extractedData.outstandingAmount !== null) {
+              bankOutstanding = bankStatement.extractedData.outstandingAmount;
+              console.log(`✅ Using outstanding from statement for ${bank.bankName}: ${bankOutstanding} (Statement ID: ${bankStatement._id}, Status: ${bankStatement.status}, Bank: ${bankStatement.bankName})`);
+            } else {
+              console.log(`⚠️ No statement found with outstandingAmount for ${bank.bankName} (Card: ${bank.cardNumber ? bank.cardNumber.slice(-4) : 'N/A'})`);
+              // List all statements for debugging
+              const allStatements = await Statement.find({
+                cardholder: cardholder._id,
+                isDeleted: false
+              }).select('_id bankName cardDigits status extractedData.outstandingAmount').sort({ createdAt: -1 }).limit(5);
+              console.log(`   Available statements:`, allStatements.map(s => ({
+                id: s._id,
+                bankName: s.bankName,
+                cardDigits: s.cardDigits,
+                status: s.status,
+                outstandingAmount: s.extractedData?.outstandingAmount
+              })));
+            }
+          } else {
+            console.log(`✅ Using bank outstandingAmount for ${bank.bankName}: ${bankOutstanding}`);
+          }
+          
+          console.log(`Bank ${bank.bankName} (${bank.cardNumber || 'N/A'}): final outstandingAmount = ${bankOutstanding}`);
+          totalOutstanding += bankOutstanding;
+        }
         
         console.log(`Cardholder ${cardholder.name} (${cardholder._id}): Total outstanding = ${totalOutstanding}, Banks count = ${banks.length}`);
+        
+        // Debug: Log all banks and their outstanding amounts
+        console.log(`All banks for ${cardholder.name}:`, banks.map(b => ({
+          bankName: b.bankName,
+          outstandingAmount: b.outstandingAmount,
+          currency: b.currency
+        })));
         
         // Get card count
         const cardCount = banks.length;
         
-        // Get last statement date
+        // Get last statement date and currency
         const lastStatement = await Statement.findOne({
           cardholder: cardholder._id,
           isDeleted: false
         }).sort({ createdAt: -1 });
+        
+        // Detect currency from last statement or banks' statements
+        let currency = 'USD';
+        if (lastStatement && lastStatement.extractedData && lastStatement.extractedData.currency) {
+          currency = lastStatement.extractedData.currency;
+        } else {
+          // Try to find currency from any statement for this cardholder
+          const anyStatement = await Statement.findOne({
+            cardholder: cardholder._id,
+            isDeleted: false,
+            'extractedData.currency': { $exists: true, $ne: null }
+          });
+          if (anyStatement && anyStatement.extractedData && anyStatement.extractedData.currency) {
+            currency = anyStatement.extractedData.currency;
+          }
+        }
         
         // Convert to plain object and add calculated fields
         const cardholderObj = cardholder.toObject();
@@ -95,6 +177,7 @@ router.get('/', [
         cardholderObj.outstandingAmount = totalOutstanding; // For compatibility
         cardholderObj.cardCount = cardCount;
         cardholderObj.lastStatementDate = lastStatement ? lastStatement.createdAt : null;
+        cardholderObj.currency = currency; // Add currency for frontend display
         
         return cardholderObj;
       })
@@ -115,6 +198,12 @@ router.get('/', [
     const totalOutstanding = cardholdersWithOutstanding.reduce((sum, c) => {
       return sum + (c.totalOutstanding || 0);
     }, 0);
+    
+    // Detect currency for total outstanding - prefer INR if any cardholder has INR
+    const currencies = cardholdersWithOutstanding
+      .map(c => c.currency || 'USD')
+      .filter((c, i, arr) => arr.indexOf(c) === i); // unique currencies
+    const totalCurrency = currencies.includes('INR') ? 'INR' : (currencies[0] || 'USD');
 
     res.json({
       success: true,
@@ -210,13 +299,42 @@ router.get('/:id', async (req, res) => {
           .filter(t => t.category === 'orders' && t.payoutReceived === true)
           .reduce((sum, t) => sum + (t.payoutAmount || 0), 0);
         
+        // Detect currency - prioritize bank.currency, then statement currency, default to INR
+        let bankCurrency = bank.currency || 'INR';
+        if (!bankCurrency || bankCurrency === 'USD') {
+          // Only check statements if bank doesn't have currency set
+          if (bankStatements.length > 0) {
+            const latestBankStatement = bankStatements.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+            if (latestBankStatement && latestBankStatement.extractedData && latestBankStatement.extractedData.currency) {
+              bankCurrency = latestBankStatement.extractedData.currency;
+            }
+          }
+        }
+        
+        // Calculate outstanding from transactions (sum of all transaction amounts)
+        // Transactions are typically negative (debits), so we sum absolute values
+        const calculatedOutstanding = bankTransactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+        
+        // Get last transaction for this bank
+        const lastTransaction = bankTransactions.length > 0 
+          ? bankTransactions.sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt))[0]
+          : null;
+        
         const summary = {
           bankId: bank._id,
           bankName: bank.bankName,
           cardNumber: bank.cardNumber,
           cardLimit: bank.cardLimit,
           availableLimit: bank.availableLimit,
-          outstandingAmount: bank.outstandingAmount,
+          outstandingAmount: bank.outstandingAmount, // Manual outstanding from bank
+          calculatedOutstanding: calculatedOutstanding, // Calculated from transactions
+          lastTransaction: lastTransaction ? {
+            date: lastTransaction.date || lastTransaction.createdAt,
+            amount: lastTransaction.amount,
+            description: lastTransaction.description,
+            category: lastTransaction.category
+          } : null,
+          currency: bankCurrency,
           totals,
           totalPayoutsReceived,
           profit: totals.orders - totals.bills - totals.fees, // Simplified calculation
@@ -247,12 +365,30 @@ router.get('/:id', async (req, res) => {
       totalAmountGiven: 0 // To be calculated based on business logic
     };
 
+    // Detect currency from cardholder's statements
+    let currency = 'USD';
+    const latestStatement = statements[0];
+    if (latestStatement && latestStatement.extractedData && latestStatement.extractedData.currency) {
+      currency = latestStatement.extractedData.currency;
+    } else {
+      // Try to find currency from any statement
+      const anyStatement = await Statement.findOne({
+        cardholder: req.params.id,
+        isDeleted: false,
+        'extractedData.currency': { $exists: true, $ne: null }
+      });
+      if (anyStatement && anyStatement.extractedData && anyStatement.extractedData.currency) {
+        currency = anyStatement.extractedData.currency;
+      }
+    }
+
     res.json({
       success: true,
       data: {
         // Cardholder Details (Mandatory fields)
         cardholder: {
           ...cardholder.getPublicProfile(),
+          currency: currency, // Add currency to cardholder
           // Ensure all mandatory fields are present
           dob: cardholder.dob,
           fatherName: cardholder.fatherName,

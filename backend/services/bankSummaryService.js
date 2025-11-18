@@ -32,7 +32,7 @@ class BankSummaryService {
       const statementQuery = {
         cardholder: bank.cardholder._id || bank.cardholder,
         bankName: bank.bankName,
-        isDeleted: false
+        isDeleted: false // Statement model has isDeleted field
       };
       
       // Only add cardDigits filter if we have it
@@ -69,12 +69,51 @@ class BankSummaryService {
       // Calculate summary data
       const summary = await this.calculateBankSummary(bank, statements, transactions, filters);
 
+      // Return bank data with currency included
+      // Handle both Mongoose documents and plain objects
+      let bankData;
+      if (bank.toObject && typeof bank.toObject === 'function') {
+        bankData = bank.toObject();
+      } else if (bank.toJSON && typeof bank.toJSON === 'function') {
+        bankData = bank.toJSON();
+      } else {
+        bankData = bank;
+      }
+      
+      const publicBankInfo = {
+        _id: bankData._id,
+        cardholder: bankData.cardholder,
+        bankName: bankData.bankName,
+        cardNumber: bankData.cardNumber,
+        cardType: bankData.cardType,
+        cardLimit: bankData.cardLimit || 0,
+        availableLimit: bankData.availableLimit || 0,
+        outstandingAmount: bankData.outstandingAmount || 0,
+        currency: bankData.currency || 'USD', // Ensure currency is included
+        status: bankData.status || 'active',
+        lastUpdated: bankData.lastUpdated,
+        createdAt: bankData.createdAt,
+        updatedAt: bankData.updatedAt
+      };
+
+      // Handle statements safely
+      const publicStatements = statements.map(s => {
+        if (s && typeof s.getPublicInfo === 'function') {
+          return s.getPublicInfo();
+        } else if (s && typeof s.toObject === 'function') {
+          return s.toObject();
+        } else if (s && typeof s.toJSON === 'function') {
+          return s.toJSON();
+        }
+        return s;
+      });
+
       return {
         success: true,
         data: {
-          bank: bank.getPublicInfo(),
+          bank: publicBankInfo,
           summary,
-          statements: statements.map(s => s.getPublicInfo()),
+          statements: publicStatements,
           transactions: transactions.length
         }
       };
@@ -103,7 +142,8 @@ class BankSummaryService {
         cardholder: bank.cardholder,
         bankName: bank.bankName,
         cardNumber: bank.cardNumber,
-        cardType: bank.cardType
+        cardType: bank.cardType,
+        currency: bank.currency || 'USD' // Include currency from bank
       };
 
       // Calculate from latest statement if available
@@ -114,6 +154,10 @@ class BankSummaryService {
         summary.outstandingAmount = latestStatement.extractedData.outstandingAmount || summary.outstandingAmount;
         summary.minimumPayment = latestStatement.extractedData.minimumPayment || 0;
         summary.dueDate = latestStatement.extractedData.dueDate;
+        // Use currency from statement if available, otherwise keep bank currency
+        if (latestStatement.extractedData.currency) {
+          summary.currency = latestStatement.extractedData.currency;
+        }
       }
 
       // Calculate transaction totals by category
@@ -375,7 +419,8 @@ class BankSummaryService {
       console.log('Getting overall summary across all banks');
 
       // Get all banks
-      const banks = await Bank.find({ isDeleted: false })
+      // Note: Bank model doesn't have isDeleted field, so we don't filter by it
+      const banks = await Bank.find({})
         .populate('cardholder', 'name email');
 
       const bankSummaries = [];

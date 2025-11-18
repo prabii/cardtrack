@@ -24,6 +24,11 @@ const transactionSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
+  currency: {
+    type: String,
+    enum: ['USD', 'EUR', 'GBP', 'INR', 'CAD'],
+    default: 'USD'
+  },
   balance: {
     type: Number,
     default: null
@@ -96,18 +101,24 @@ transactionSchema.index({ isDeleted: 1 });
 
 // Virtual for formatted amount
 transactionSchema.virtual('formattedAmount').get(function() {
-  return new Intl.NumberFormat('en-US', {
+  const currency = this.currency || 'USD';
+  // Use appropriate locale based on currency
+  const locale = currency === 'INR' ? 'en-IN' : 'en-US';
+  return new Intl.NumberFormat(locale, {
     style: 'currency',
-    currency: 'USD'
+    currency: currency
   }).format(this.amount);
 });
 
 // Virtual for formatted balance
 transactionSchema.virtual('formattedBalance').get(function() {
   if (this.balance === null) return null;
-  return new Intl.NumberFormat('en-US', {
+  const currency = this.currency || 'USD';
+  // Use appropriate locale based on currency
+  const locale = currency === 'INR' ? 'en-IN' : 'en-US';
+  return new Intl.NumberFormat(locale, {
     style: 'currency',
-    currency: 'USD'
+    currency: currency
   }).format(this.balance);
 });
 

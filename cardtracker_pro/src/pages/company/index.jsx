@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useRealtime } from '../../contexts/RealtimeContext';
 import { getCompanyDashboard } from '../../utils/companyApi';
 import { 
@@ -12,10 +13,12 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   ArrowTrendingUpIcon,
-  ArrowTrendingDownIcon
+  ArrowTrendingDownIcon,
+  PlusIcon
 } from '@heroicons/react/24/outline';
 
 const CompanyDashboard = () => {
+  const navigate = useNavigate();
   const { trackActivity } = useRealtime();
   const [data, setData] = useState({});
   const [isLoading, setIsLoading] = useState(true);
@@ -31,13 +34,46 @@ const CompanyDashboard = () => {
       setError('');
       
       const response = await getCompanyDashboard();
-      setData(response.data || {});
+      console.log('Company dashboard response:', response);
+      
+      // Handle response structure - backend returns { success: true, data: {...} }
+      // axios already extracts response.data, so we get { success: true, data: {...} }
+      let responseData = {};
+      
+      if (response && response.success && response.data) {
+        // Backend response structure: { success: true, data: {...} }
+        responseData = response.data;
+      } else if (response && response.data) {
+        // If response.data exists but no success field, use it directly
+        responseData = response.data;
+      } else if (response) {
+        // If response is the data itself
+        responseData = response;
+      }
+      
+      console.log('Company dashboard data:', responseData);
+      console.log('Data structure:', {
+        summary: responseData.summary,
+        expenses: responseData.expenses,
+        fdCards: responseData.fdCards,
+        projects: responseData.projects,
+        recentActivities: responseData.recentActivities
+      });
+      
+      if (responseData && Object.keys(responseData).length > 0) {
+        setData(responseData);
+      } else {
+        console.warn('No data received from company dashboard API');
+        setData({});
+      }
       
       // Track activity
       trackActivity('company', 'viewed', 'dashboard', { module: 'company_dashboard' });
     } catch (err) {
       console.error('Load company dashboard error:', err);
-      setError(err.message || 'Failed to load company dashboard');
+      console.error('Error details:', err.response?.data || err.message);
+      setError(err.response?.data?.message || err.message || 'Failed to load company dashboard');
+      setData({}); // Set empty data on error
     } finally {
       setIsLoading(false);
     }
@@ -104,18 +140,37 @@ const CompanyDashboard = () => {
     );
   }
 
-  const { summary, expenses, fdCards, projects, recentActivities } = data;
+  const { summary = {}, expenses = {}, fdCards = {}, projects = {}, recentActivities = {} } = data;
+  
+  // Log data structure for debugging
+  console.log('Rendering company dashboard with data:', {
+    summary,
+    expenses,
+    fdCards,
+    projects,
+    recentActivities,
+    fullData: data
+  });
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="mb-8">
-        <div className="flex items-center gap-3">
-          <BuildingOfficeIcon className="h-8 w-8 text-blue-600" />
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Company Management</h1>
-            <p className="text-gray-600 mt-2">Comprehensive company financial and project management</p>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <BuildingOfficeIcon className="h-8 w-8 text-blue-600" />
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Company Management</h1>
+              <p className="text-gray-600 mt-2">Comprehensive company financial and project management</p>
+            </div>
           </div>
+          <button
+            onClick={() => navigate('/company/add')}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <PlusIcon className="h-5 w-5" />
+            Add Company
+          </button>
         </div>
       </div>
 
@@ -176,10 +231,18 @@ const CompanyDashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         {/* Expenses Summary */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            <CurrencyDollarIcon className="h-5 w-5 mr-2 text-red-600" />
-            Expenses Overview
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+              <CurrencyDollarIcon className="h-5 w-5 mr-2 text-red-600" />
+              Expenses Overview
+            </h3>
+            <button
+              onClick={() => navigate('/company/add-expense')}
+              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+            >
+              Add Expense
+            </button>
+          </div>
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-600">Total Expenses</span>
@@ -198,10 +261,18 @@ const CompanyDashboard = () => {
 
         {/* FD Cards Summary */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            <BanknotesIcon className="h-5 w-5 mr-2 text-yellow-600" />
-            FD Cards Overview
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+              <BanknotesIcon className="h-5 w-5 mr-2 text-yellow-600" />
+              FD Cards Overview
+            </h3>
+            <button
+              onClick={() => navigate('/company/add-fd-card')}
+              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+            >
+              Add FD Card
+            </button>
+          </div>
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-600">Total Value</span>
@@ -221,10 +292,18 @@ const CompanyDashboard = () => {
 
       {/* Projects Overview */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-8">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-          <FolderIcon className="h-5 w-5 mr-2 text-green-600" />
-          Projects Overview
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+            <FolderIcon className="h-5 w-5 mr-2 text-green-600" />
+            Projects Overview
+          </h3>
+          <button
+            onClick={() => navigate('/company/add-project')}
+            className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+          >
+            Add Project
+          </button>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="text-center">
             <p className="text-2xl font-bold text-gray-900">{formatCurrency(projects?.totalBudget)}</p>

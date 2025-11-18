@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useRealtime } from '../../contexts/RealtimeContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
@@ -31,9 +32,22 @@ import {
 } from '@heroicons/react/24/outline';
 
 const Reports = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { trackActivity } = useRealtime();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('dashboard');
+  
+  // Determine active tab from URL path
+  const getInitialTab = () => {
+    const path = location.pathname;
+    if (path.includes('/cardholders')) return 'cardholders';
+    if (path.includes('/transactions')) return 'transactions';
+    if (path.includes('/bill-payments')) return 'bill-payments';
+    if (path.includes('/statements')) return 'statements';
+    return 'dashboard';
+  };
+  
+  const [activeTab, setActiveTab] = useState(getInitialTab());
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [dateRange, setDateRange] = useState(DATE_RANGES.THIS_MONTH);
@@ -44,6 +58,14 @@ const Reports = () => {
   const [filters, setFilters] = useState({});
   const [data, setData] = useState({});
   const [exportLoading, setExportLoading] = useState(false);
+
+  // Update active tab when URL changes
+  useEffect(() => {
+    const newTab = getInitialTab();
+    if (newTab !== activeTab) {
+      setActiveTab(newTab);
+    }
+  }, [location.pathname]);
 
   // Load data when component mounts or filters change
   useEffect(() => {
@@ -96,7 +118,20 @@ const Reports = () => {
           throw new Error('Invalid report type');
       }
 
-      setData(response.data || response);
+      const responseData = response.data || response;
+      setData(responseData);
+      
+      // Log for debugging
+      console.log(`${activeTab} report data:`, responseData);
+      if (activeTab === 'transactions') {
+        console.log('Transactions array:', responseData.transactions || responseData.data);
+        console.log('Transactions count:', (responseData.transactions || responseData.data || []).length);
+        console.log('Pagination:', responseData.pagination);
+      }
+      if (activeTab === 'dashboard') {
+        console.log('Summary:', responseData.summary);
+        console.log('Financial:', responseData.financial);
+      }
     } catch (err) {
       console.error('Load reports error:', err);
       const errorMessage = err.response?.data?.message || err.message || 'Failed to load reports';
@@ -167,9 +202,25 @@ const Reports = () => {
   };
 
   const renderDashboard = () => {
-    if (!data.summary) return null;
+    if (!data || !data.summary) {
+      return (
+        <div className="text-center py-12">
+          <ChartBarIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+          <p className="text-gray-500">No dashboard data available</p>
+        </div>
+      );
+    }
 
     const { summary, financial, categoryBreakdown, monthlyTrends, topCardholders } = data;
+    
+    // Ensure we have valid data
+    if (!summary || typeof summary !== 'object') {
+      return (
+        <div className="text-center py-12">
+          <p className="text-red-600">Invalid summary data received</p>
+        </div>
+      );
+    }
 
     return (
       <div className="space-y-6">
@@ -199,7 +250,7 @@ const Reports = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Amount</p>
-                <p className="text-3xl font-bold text-gray-900">{formatCurrency(financial.totalAmount)}</p>
+                <p className="text-3xl font-bold text-gray-900">{formatCurrency(financial?.totalAmount || 0)}</p>
               </div>
               <BanknotesIcon className="h-8 w-8 text-yellow-600" />
             </div>
@@ -288,6 +339,58 @@ const Reports = () => {
     );
   };
 
+  const formatValue = (value, key) => {
+    if (value === null || value === undefined) {
+      return '-';
+    }
+    
+    // Handle dates
+    if (value instanceof Date || (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value))) {
+      try {
+        return new Date(value).toLocaleDateString('en-US', { 
+          year: 'numeric', 
+          month: 'short', 
+          day: 'numeric' 
+        });
+      } catch {
+        return String(value);
+      }
+    }
+    
+    // Handle objects (populated references)
+    if (typeof value === 'object' && value !== null) {
+      if (value._id) {
+        // Populated reference - show name/email or ID
+        return value.name || value.email || value.bankName || value._id.toString().slice(-8);
+      }
+      // Array
+      if (Array.isArray(value)) {
+        return value.length > 0 ? `${value.length} items` : 'None';
+      }
+      // Other objects - try to extract meaningful info
+      if (value.toString && value.toString() !== '[object Object]') {
+        return value.toString();
+      }
+      // Skip displaying complex objects
+      return '-';
+    }
+    
+    // Handle booleans
+    if (typeof value === 'boolean') {
+      return value ? 'Yes' : 'No';
+    }
+    
+    // Handle numbers (format currency for amount fields)
+    if (typeof value === 'number') {
+      if (key && (key.toLowerCase().includes('amount') || key.toLowerCase().includes('balance') || key.toLowerCase().includes('limit'))) {
+        return formatCurrency(value);
+      }
+      return formatNumber(value);
+    }
+    
+    return String(value);
+  };
+
   const renderTable = () => {
     try {
       // Handle different data structures
@@ -329,7 +432,7 @@ const Reports = () => {
         );
       }
 
-      // Get column keys from first item
+      // Get column keys from first item, but filter out complex objects
       const firstItem = items[0];
       if (!firstItem || typeof firstItem !== 'object') {
         return (
@@ -339,7 +442,17 @@ const Reports = () => {
         );
       }
 
-      const columns = Object.keys(firstItem);
+      // Filter columns to show only meaningful ones
+      const columns = Object.keys(firstItem).filter(key => {
+        const value = firstItem[key];
+        // Skip complex nested objects that aren't populated references
+        if (typeof value === 'object' && value !== null && !value._id && !Array.isArray(value) && !(value instanceof Date)) {
+          return false;
+        }
+        // Skip internal MongoDB fields unless they're meaningful
+        if (key === '__v') return false;
+        return true;
+      });
 
       return (
         <div className="space-y-4">
@@ -361,26 +474,10 @@ const Reports = () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {items.map((item, index) => (
-                    <tr key={index} className="hover:bg-gray-50">
+                    <tr key={item._id || index} className="hover:bg-gray-50">
                       {columns.map((key, valueIndex) => {
                         const value = item[key];
-                        let displayValue = '';
-                        
-                        if (value === null || value === undefined) {
-                          displayValue = '-';
-                        } else if (typeof value === 'object') {
-                          if (value instanceof Date) {
-                            displayValue = new Date(value).toLocaleDateString();
-                          } else if (value._id) {
-                            displayValue = value.name || value.email || value._id.toString().slice(-8);
-                          } else {
-                            displayValue = JSON.stringify(value);
-                          }
-                        } else if (typeof value === 'boolean') {
-                          displayValue = value ? 'Yes' : 'No';
-                        } else {
-                          displayValue = String(value);
-                        }
+                        const displayValue = formatValue(value, key);
                         
                         return (
                           <td key={valueIndex} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -526,7 +623,12 @@ const Reports = () => {
             ].map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  // Update URL without full page reload
+                  const path = tab.id === 'dashboard' ? '/reports' : `/reports/${tab.id}`;
+                  navigate(path, { replace: true });
+                }}
                 className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
                   activeTab === tab.id
                     ? 'border-blue-500 text-blue-600'

@@ -280,11 +280,19 @@ router.get('/transactions', [
       limit = 10
     } = req.query;
 
-    // Build filter
-    const filter = {};
+    // Build filter - exclude deleted transactions
+    const filter = { isDeleted: { $ne: true } };
     if (startDate && endDate) {
       filter.createdAt = {
         $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
+    } else if (startDate) {
+      filter.createdAt = {
+        $gte: new Date(startDate)
+      };
+    } else if (endDate) {
+      filter.createdAt = {
         $lte: new Date(endDate)
       };
     }
@@ -299,7 +307,7 @@ router.get('/transactions', [
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const transactions = await Transaction.find(filter)
       .populate('cardholder', 'name email')
-      .populate('bank', 'bankName accountNumber')
+      .populate('statement', 'month year cardDigits bankName')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -353,7 +361,13 @@ router.get('/transactions', [
     });
   } catch (error) {
     console.error('Transaction reports error:', error);
-    res.status(500).json({ success: false, message: 'Server error' });
+    console.error('Error stack:', error.stack);
+    console.error('Filter used:', filter);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 

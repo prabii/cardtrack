@@ -33,12 +33,18 @@ export const RealtimeProvider = ({ children }) => {
   const userActivityThrottleMs = 1000; // 1 second
 
   useEffect(() => {
-    const authToken = getAccessToken();
-    if (user && authToken && !socket) {
-      initializeSocket();
-    } else if (!user || !authToken) {
-      disconnectSocket();
-    }
+    // Only initialize socket if user is authenticated
+    // Use setTimeout to make this non-blocking for initial render
+    const timer = setTimeout(() => {
+      const authToken = getAccessToken();
+      if (user && authToken && !socket) {
+        initializeSocket();
+      } else if (!user || !authToken) {
+        disconnectSocket();
+      }
+    }, 100); // Small delay to not block initial render
+
+    return () => clearTimeout(timer);
   }, [user]);
 
   // Cleanup on unmount
@@ -64,7 +70,11 @@ export const RealtimeProvider = ({ children }) => {
       auth: {
         token: authToken
       },
-      transports: ['websocket', 'polling']
+      transports: ['websocket', 'polling'],
+      timeout: 5000, // 5 second timeout
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 3
     });
 
     newSocket.on('connect', () => {

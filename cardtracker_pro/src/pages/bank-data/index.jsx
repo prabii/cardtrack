@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../../components/ui/Header';
-import { getBanks, getStatusColor, formatCurrency } from '../../utils/bankApi';
+import { getBanks, getStatusColor } from '../../utils/bankApi';
 import {
   CreditCard,
   Plus,
@@ -76,13 +76,16 @@ const BankData = () => {
   const handleDeleteBank = async (bank) => {
     if (window.confirm(`Are you sure you want to delete ${bank.bankName}?`)) {
       try {
-        // Implement delete API call
-        console.log('Deleting bank:', bank._id);
-        // await deleteBank(bank._id);
-        loadBanks();
+        const { deleteBank } = await import('../../utils/bankApi');
+        const response = await deleteBank(bank._id);
+        if (response.success) {
+          loadBanks();
+        } else {
+          alert(response.message || 'Failed to delete bank.');
+        }
       } catch (err) {
         console.error('Error deleting bank:', err);
-        alert('Failed to delete bank.');
+        alert(err.response?.data?.message || 'Failed to delete bank.');
       }
     }
   };
@@ -124,7 +127,17 @@ const BankData = () => {
               </div>
               <div>
                 <p className="text-sm text-gray-500">Total Limit</p>
-                <p className="text-2xl font-semibold text-gray-900">{formatCurrency(stats.totalLimit || 0)}</p>
+                <p className="text-2xl font-semibold text-gray-900">
+                  {(() => {
+                    const amount = stats.totalLimit || 0;
+                    const currency = 'INR'; // Default to INR for overall stats
+                    const locale = currency === 'INR' ? 'en-IN' : 'en-US';
+                    return new Intl.NumberFormat(locale, {
+                      style: 'currency',
+                      currency: currency
+                    }).format(amount);
+                  })()}
+                </p>
               </div>
             </div>
             <div className="bg-white rounded-xl shadow-lg p-6 flex items-center space-x-4">
@@ -133,7 +146,17 @@ const BankData = () => {
               </div>
               <div>
                 <p className="text-sm text-gray-500">Total Outstanding</p>
-                <p className="text-2xl font-semibold text-gray-900">{formatCurrency(stats.totalOutstanding || 0)}</p>
+                <p className="text-2xl font-semibold text-gray-900">
+                  {(() => {
+                    const amount = stats.totalOutstanding || 0;
+                    const currency = 'INR'; // Default to INR for overall stats
+                    const locale = currency === 'INR' ? 'en-IN' : 'en-US';
+                    return new Intl.NumberFormat(locale, {
+                      style: 'currency',
+                      currency: currency
+                    }).format(amount);
+                  })()}
+                </p>
               </div>
             </div>
             <div className="bg-white rounded-xl shadow-lg p-6 flex items-center space-x-4">
@@ -142,7 +165,17 @@ const BankData = () => {
               </div>
               <div>
                 <p className="text-sm text-gray-500">Available Limit</p>
-                <p className="text-2xl font-semibold text-gray-900">{formatCurrency(stats.totalAvailable || 0)}</p>
+                <p className="text-2xl font-semibold text-gray-900">
+                  {(() => {
+                    const amount = stats.totalAvailable || 0;
+                    const currency = 'INR'; // Default to INR for overall stats
+                    const locale = currency === 'INR' ? 'en-IN' : 'en-US';
+                    return new Intl.NumberFormat(locale, {
+                      style: 'currency',
+                      currency: currency
+                    }).format(amount);
+                  })()}
+                </p>
               </div>
             </div>
           </div>
@@ -226,29 +259,51 @@ const BankData = () => {
                             <div className="text-sm text-gray-500">{bank.cardType}</div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">Limit: {formatCurrency(bank.cardLimit)}</div>
-                            <div className="text-sm text-green-600">Available: {formatCurrency(bank.availableLimit)}</div>
-                            <div className="text-sm text-red-600">Outstanding: {formatCurrency(bank.outstandingAmount)}</div>
+                            {(() => {
+                              const currency = bank.currency || 'INR';
+                              const locale = currency === 'INR' ? 'en-IN' : 'en-US';
+                              const formatAmount = (amt) => new Intl.NumberFormat(locale, {
+                                style: 'currency',
+                                currency: currency
+                              }).format(amt || 0);
+                              return (
+                                <>
+                                  <div className="text-sm text-gray-900">Limit: {formatAmount(bank.cardLimit)}</div>
+                                  <div className="text-sm text-green-600">Available: {formatAmount(bank.availableLimit)}</div>
+                                  <div className="text-sm text-red-600">Outstanding: {formatAmount(bank.outstandingAmount)}</div>
+                                </>
+                              );
+                            })()}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="grid grid-cols-2 gap-1 text-xs">
-                              <div className="flex justify-between">
-                                <span className="text-gray-500">Orders:</span>
-                                <span className="font-medium">{formatCurrency(bank.transactionsSummary?.orders || 0)}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-500">Bills:</span>
-                                <span className="font-medium">{formatCurrency(bank.transactionsSummary?.bills || 0)}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-500">Withdrawals:</span>
-                                <span className="font-medium">{formatCurrency(bank.transactionsSummary?.withdrawals || 0)}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-500">Fees:</span>
-                                <span className="font-medium">{formatCurrency(bank.transactionsSummary?.fees || 0)}</span>
-                              </div>
-                            </div>
+                            {(() => {
+                              const currency = bank.currency || 'INR';
+                              const locale = currency === 'INR' ? 'en-IN' : 'en-US';
+                              const formatAmount = (amt) => new Intl.NumberFormat(locale, {
+                                style: 'currency',
+                                currency: currency
+                              }).format(amt || 0);
+                              return (
+                                <div className="grid grid-cols-2 gap-1 text-xs">
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-500">Orders:</span>
+                                    <span className="font-medium">{formatAmount(bank.transactionsSummary?.orders || 0)}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-500">Bills:</span>
+                                    <span className="font-medium">{formatAmount(bank.transactionsSummary?.bills || 0)}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-500">Withdrawals:</span>
+                                    <span className="font-medium">{formatAmount(bank.transactionsSummary?.withdrawals || 0)}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-500">Fees:</span>
+                                    <span className="font-medium">{formatAmount(bank.transactionsSummary?.fees || 0)}</span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(bank.status)}`}>

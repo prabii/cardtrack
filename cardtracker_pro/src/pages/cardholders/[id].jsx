@@ -4,6 +4,7 @@ import Header from '../../components/ui/Header';
 import { getCardholder } from '../../utils/cardholderApi';
 import { useRealtime } from '../../contexts/RealtimeContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatAmount } from '../../utils/transactionApi';
 import { 
   User, 
   Mail, 
@@ -118,8 +119,17 @@ const CardholderDashboard = () => {
         setCardholder(data.cardholder || data);
         // Load transactions from API
         setTransactions(data.transactions || data.recentTransactions || []);
-        // Load banks from API
-        setBankData(data.bankSummaries || data.banks || []);
+        // Load banks from API - handle both bankSummaries structure and direct banks array
+        let banks = data.bankSummaries || data.banks || [];
+        // bankSummaries from backend are already flat objects with currency field
+        // Just ensure currency defaults to INR if not set
+        banks = banks.map(bank => ({
+          ...bank,
+          currency: bank.currency || 'INR' // Default to INR if currency not set
+        }));
+        console.log('Bank data loaded:', banks);
+        console.log('Bank currencies:', banks.map(b => ({ name: b.bankName, currency: b.currency })));
+        setBankData(banks);
       } else {
         throw new Error(response.message || 'Failed to load cardholder');
       }
@@ -323,9 +333,25 @@ const CardholderDashboard = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Outstanding Amount</p>
-                  <p className="text-3xl font-bold text-red-600">
-                    ${bankData.reduce((sum, bank) => sum + bank.outstandingAmount, 0).toLocaleString()}
-                  </p>
+                  <div>
+                    <p className="text-3xl font-bold text-red-600">
+                      {(() => {
+                        const totalOutstanding = bankData.reduce((sum, bank) => sum + (bank.outstandingAmount || 0), 0);
+                        // Detect currency from cardholder or banks, default to INR
+                        const currency = cardholder?.currency || bankData[0]?.currency || 'INR';
+                        return formatAmount(totalOutstanding, currency);
+                      })()}
+                    </p>
+                    {bankData.some(bank => bank.calculatedOutstanding !== undefined) && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        From Transactions: {(() => {
+                          const totalCalculated = bankData.reduce((sum, bank) => sum + (bank.calculatedOutstanding || 0), 0);
+                          const currency = cardholder?.currency || bankData[0]?.currency || 'INR';
+                          return formatAmount(totalCalculated, currency);
+                        })()}
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <DollarSign className="w-8 h-8 text-red-600" />
               </div>
@@ -437,29 +463,60 @@ const CardholderDashboard = () => {
                   <div>
                     <h3 className="text-xl font-semibold text-gray-900 mb-6">Bank Summary</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {bankData.map((bank, index) => (
-                        <div key={index} className="bg-gray-50 rounded-lg p-6">
-                          <h4 className="text-lg font-semibold text-gray-900 mb-4">{bank.bankName}</h4>
-                          <div className="space-y-3">
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">Card:</span>
-                              <span className="font-medium">{bank.cardNumber}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">Limit:</span>
-                              <span className="font-medium">${bank.cardLimit.toLocaleString()}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">Available:</span>
-                              <span className="font-medium text-green-600">${bank.availableLimit.toLocaleString()}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">Outstanding:</span>
-                              <span className="font-medium text-red-600">${bank.outstandingAmount.toLocaleString()}</span>
+                      {bankData.map((bank, index) => {
+                        const currency = bank.currency || cardholder?.currency || 'INR';
+                        return (
+                          <div key={index} className="bg-gray-50 rounded-lg p-6">
+                            <h4 className="text-lg font-semibold text-gray-900 mb-4">{bank.bankName}</h4>
+                            <div className="space-y-3">
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Card:</span>
+                                <span className="font-medium">{bank.cardNumber || 'N/A'}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Limit:</span>
+                                <span className="font-medium">
+                                  {formatAmount(bank.cardLimit || 0, currency)}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Available:</span>
+                                <span className="font-medium text-green-600">
+                                  {formatAmount(bank.availableLimit || 0, currency)}
+                                </span>
+                              </div>
+                              <div className="flex justify-between border-t pt-2">
+                                <span className="text-gray-600 font-medium">Manual Outstanding:</span>
+                                <span className="font-medium text-red-600">
+                                  {formatAmount(bank.outstandingAmount || 0, currency)}
+                                </span>
+                              </div>
+                              {bank.calculatedOutstanding !== undefined && (
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">From Transactions:</span>
+                                  <span className="font-medium text-orange-600">
+                                    {formatAmount(bank.calculatedOutstanding || 0, currency)}
+                                  </span>
+                                </div>
+                              )}
+                              {bank.lastTransaction && (
+                                <div className="mt-3 pt-3 border-t">
+                                  <div className="text-xs text-gray-500 mb-1">Last Transaction:</div>
+                                  <div className="text-sm">
+                                    <div className="font-medium">{bank.lastTransaction.description || 'N/A'}</div>
+                                    <div className="text-gray-600">
+                                      {formatAmount(Math.abs(bank.lastTransaction.amount || 0), currency)} • {bank.lastTransaction.category || 'N/A'}
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      {bank.lastTransaction.date ? new Date(bank.lastTransaction.date).toLocaleDateString() : 'N/A'}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
@@ -505,11 +562,15 @@ const CardholderDashboard = () => {
                               <div className="flex justify-between items-end">
                                 <div>
                                   <div className="text-sm opacity-80 mb-1">Card Limit</div>
-                                  <div className="text-lg font-semibold">${(bank.cardLimit || 0).toLocaleString()}</div>
+                                  <div className="text-lg font-semibold">
+                                    {formatAmount(bank.cardLimit || 0, bank.currency || cardholder?.currency || 'INR')}
+                                  </div>
                                 </div>
                                 <div className="text-right">
                                   <div className="text-sm opacity-80 mb-1">Available</div>
-                                  <div className="text-lg font-semibold">${(bank.availableLimit || 0).toLocaleString()}</div>
+                                  <div className="text-lg font-semibold">
+                                    {formatAmount(bank.availableLimit || 0, bank.currency || cardholder?.currency || 'INR')}
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -519,7 +580,9 @@ const CardholderDashboard = () => {
                           <div className="mt-4 bg-white rounded-xl p-4 shadow-lg border border-gray-100">
                             <div className="grid grid-cols-2 gap-4">
                               <div className="text-center">
-                                <div className="text-2xl font-bold text-red-600">${(bank.outstandingAmount || 0).toLocaleString()}</div>
+                                <div className="text-2xl font-bold text-red-600">
+                                  {formatAmount(bank.outstandingAmount || 0, bank.currency || cardholder?.currency || 'INR')}
+                                </div>
                                 <div className="text-sm text-gray-600">Outstanding</div>
                               </div>
                               <div className="text-center">

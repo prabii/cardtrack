@@ -79,6 +79,11 @@ const statementSchema = new mongoose.Schema({
 
   // Extracted Data
   extractedData: {
+    currency: {
+      type: String,
+      enum: ['USD', 'EUR', 'GBP', 'INR', 'CAD'],
+      default: 'USD'
+    },
     totalTransactions: {
       type: Number,
       default: 0

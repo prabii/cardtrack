@@ -36,6 +36,12 @@ const bankSchema = new mongoose.Schema({
     default: 0,
     min: [0, 'Outstanding amount cannot be negative']
   },
+  currency: {
+    type: String,
+    default: 'INR',
+    trim: true,
+    uppercase: true
+  },
   transactionsSummary: {
     orders: {
       type: Number,

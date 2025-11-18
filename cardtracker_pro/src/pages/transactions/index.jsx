@@ -219,10 +219,12 @@ const Transactions = () => {
     return labels[category] || 'Unknown';
   };
 
-  const formatAmount = (amount) => {
-    return new Intl.NumberFormat('en-US', {
+  const formatAmount = (amount, currency = 'USD') => {
+    // Use appropriate locale based on currency
+    const locale = currency === 'INR' ? 'en-IN' : 'en-US';
+    return new Intl.NumberFormat(locale, {
       style: 'currency',
-      currency: 'USD'
+      currency: currency
     }).format(amount);
   };
 
@@ -556,7 +558,7 @@ const Transactions = () => {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {formatAmount(transaction.amount)}
+                          {formatAmount(transaction.amount, transaction.currency || 'USD')}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           {user?.role === 'operator' ? (
@@ -616,9 +618,20 @@ const Transactions = () => {
                               )
                             )}
                             <button
-                              onClick={() => navigate(`/transactions/${transaction._id}`)}
+                              onClick={() => {
+                                if (!transaction || !transaction._id) {
+                                  alert('Invalid transaction data');
+                                  return;
+                                }
+                                // Navigate to statement detail page instead since there's no transaction detail page
+                                if (transaction.statement?._id || transaction.statement) {
+                                  navigate(`/statements/${transaction.statement._id || transaction.statement}`);
+                                } else {
+                                  alert('Transaction statement not found');
+                                }
+                              }}
                               className="text-blue-600 hover:text-blue-900"
-                              title="View Details"
+                              title="View Statement"
                             >
                               <Eye className="w-4 h-4" />
                             </button>

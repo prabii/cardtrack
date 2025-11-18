@@ -96,6 +96,92 @@ router.get('/', verifyToken, async (req, res) => {
   }
 });
 
+// @route   GET /api/transactions/statistics/summary
+// @desc    Get transaction statistics summary
+// @access  Private
+// NOTE: This route must come BEFORE /:id to avoid route conflicts
+router.get('/statistics/summary', verifyToken, async (req, res) => {
+  try {
+    const { cardholder, statement, startDate, endDate } = req.query;
+
+    const filters = {};
+    if (cardholder) filters.cardholder = cardholder;
+    if (statement) filters.statement = statement;
+    if (startDate || endDate) {
+      filters.startDate = startDate;
+      filters.endDate = endDate;
+    }
+
+    const stats = await Transaction.getStatistics(filters);
+    
+    res.json({
+      success: true,
+      data: stats[0] || {
+        categories: [],
+        totalTransactions: 0,
+        totalAmount: 0,
+        totalVerified: 0
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching transaction statistics:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching transaction statistics'
+    });
+  }
+});
+
+// @route   GET /api/transactions/stats/verification
+// @desc    Get verification statistics
+// @access  Private
+// NOTE: This route must come BEFORE /:id to avoid route conflicts
+router.get('/stats/verification', verifyToken, async (req, res) => {
+  try {
+    const { cardholder, bank, startDate, endDate } = req.query;
+
+    const matchStage = {};
+    if (cardholder) matchStage.cardholder = cardholder;
+    if (bank) matchStage.bank = bank;
+    if (startDate || endDate) {
+      matchStage.date = {};
+      if (startDate) matchStage.date.$gte = new Date(startDate);
+      if (endDate) matchStage.date.$lte = new Date(endDate);
+    }
+
+    const stats = await Transaction.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: {
+            verified: '$verified'
+          },
+          count: { $sum: 1 },
+          totalAmount: { $sum: '$amount' }
+        }
+      },
+      {
+        $group: {
+          _id: '$_id.verified',
+          count: { $sum: '$count' },
+          totalAmount: { $sum: '$totalAmount' }
+        }
+      }
+    ]);
+
+    res.json({
+      success: true,
+      data: stats
+    });
+  } catch (error) {
+    console.error('Error fetching verification stats:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching verification statistics'
+    });
+  }
+});
+
 // @route   GET /api/transactions/:id
 // @desc    Get single transaction
 // @access  Private
@@ -482,55 +568,6 @@ router.post('/bulk-classify', verifyToken, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Server error during bulk classification'
-    });
-  }
-});
-
-// @route   GET /api/transactions/stats/verification
-// @desc    Get verification statistics
-// @access  Private
-router.get('/stats/verification', verifyToken, async (req, res) => {
-  try {
-    const { cardholder, bank, startDate, endDate } = req.query;
-
-    const matchStage = {};
-    if (cardholder) matchStage.cardholder = cardholder;
-    if (bank) matchStage.bank = bank;
-    if (startDate || endDate) {
-      matchStage.date = {};
-      if (startDate) matchStage.date.$gte = new Date(startDate);
-      if (endDate) matchStage.date.$lte = new Date(endDate);
-    }
-
-    const stats = await Transaction.aggregate([
-      { $match: matchStage },
-      {
-        $group: {
-          _id: {
-            verified: '$verified'
-          },
-          count: { $sum: 1 },
-          totalAmount: { $sum: '$amount' }
-        }
-      },
-      {
-        $group: {
-          _id: '$_id.verified',
-          count: { $sum: '$count' },
-          totalAmount: { $sum: '$totalAmount' }
-        }
-      }
-    ]);
-
-    res.json({
-      success: true,
-      data: stats
-    });
-  } catch (error) {
-    console.error('Error fetching verification stats:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error while fetching verification statistics'
     });
   }
 });

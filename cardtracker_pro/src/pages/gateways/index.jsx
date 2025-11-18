@@ -58,12 +58,27 @@ const Gateways = () => {
   const loadGatewayDashboard = async (gatewayId) => {
     try {
       setLoading(true);
+      setError('');
       const response = await getGatewayDashboard(gatewayId);
+      console.log('Gateway dashboard response:', response);
       if (response.success) {
+        console.log('Dashboard data:', response.data);
+        console.log('Summary:', response.data.summary);
+        console.log('Summary values:', {
+          totalWithdrawals: response.data.summary?.totalWithdrawals,
+          totalBills: response.data.summary?.totalBills,
+          totalTransfers: response.data.summary?.totalTransfers,
+          totalDeposits: response.data.summary?.totalDeposits,
+          availableFunds: response.data.summary?.availableFunds
+        });
         setDashboardData(response.data);
+      } else {
+        console.error('Gateway dashboard failed:', response.message);
+        setError(response.message || 'Failed to load gateway dashboard');
       }
     } catch (err) {
       console.error('Error loading gateway dashboard:', err);
+      console.error('Error details:', err.response?.data);
       setError('Failed to load gateway dashboard');
     } finally {
       setLoading(false);

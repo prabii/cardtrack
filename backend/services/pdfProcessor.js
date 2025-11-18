@@ -225,52 +225,121 @@ class PDFProcessor {
     // Split by newlines and clean up
     let lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
     
+    console.log(`Initial lines count: ${lines.length}`);
+    console.log('Sample initial lines:', lines.slice(0, 20));
+    
     // Try to merge lines that might be split (e.g., table format where date/description/amount are on same line but PDF extraction splits them)
     // Look for lines that start with a date but don't have an amount, and merge with next line if it has an amount
     const mergedLines = [];
-    for (let i = 0; i < lines.length; i++) {
+    let i = 0;
+    
+    while (i < lines.length) {
       const line = lines[i];
       const nextLine = lines[i + 1];
       const nextNextLine = lines[i + 2];
       
-      // Pattern 1: Date - Description - $Amount (dash format, e.g., "11/05/2025 - AMAZON.COM - $125.50")
+      // Check if line starts with a date
+      const hasDate = line.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}/);
+      const hasAmount = line.match(/\$[\d,]+\.?\d{2}/) || line.match(/[\d,]+\.?\d{2}$/);
+      
+      // Pattern 1: Complete transaction on one line (Date Description $Amount)
+      if (hasDate && hasAmount && line.length > 15) {
+        mergedLines.push(line);
+        i++;
+        continue;
+      }
+      
+      // Pattern 2: Date - Description - $Amount (dash format, e.g., "11/05/2025 - AMAZON.COM - $125.50")
       if (line.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}\s*-\s*.+?\s*-\s*\$/)) {
         mergedLines.push(line);
-      }
-      // Pattern 2: If current line has a date but no $ sign or number amount, and next line has a $ sign or number, merge them
-      else if (line.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}/) && 
-          !line.match(/[\d,]+\.?\d{2}$/) && 
-          nextLine && (nextLine.match(/\$[\d,]+\.?\d{2}/) || nextLine.match(/^[\d,]+\.?\d{2}$/))) {
-        mergedLines.push(line + ' ' + nextLine);
-        i++; // Skip next line since we merged it
-      }
-      // Pattern 3: If current line has a date, next line is description (no date, no $, no ending number), and nextNextLine has $ or number, merge all three
-      else if (line.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}/) && 
-               nextLine && !nextLine.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/) && !nextLine.match(/[\d,]+\.?\d{2}$/) &&
-               nextNextLine && (nextNextLine.match(/\$[\d,]+\.?\d{2}/) || nextNextLine.match(/^[\d,]+\.?\d{2}$/))) {
-        mergedLines.push(line + ' ' + nextLine + ' ' + nextNextLine);
-        i += 2; // Skip next two lines
-      }
-      // Pattern 4: If line already has date and $ or ending number, keep it as is
-      else if (line.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/) && (line.match(/\$[\d,]+\.?\d{2}/) || line.match(/[\d,]+\.?\d{2}$/))) {
-        mergedLines.push(line);
-      }
-      // Pattern 5: If line has date and description but no amount, try to merge with next line that has amount
-      else if (line.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}/) && line.length > 10 && 
-               nextLine && (nextLine.match(/^\$?[\d,]+\.?\d{2}$/) || nextLine.match(/\$[\d,]+\.?\d{2}/))) {
-        mergedLines.push(line + ' ' + nextLine);
         i++;
+        continue;
       }
-      // Pattern 6: Otherwise, keep the line
-      else {
-        mergedLines.push(line);
+      
+      // Pattern 3: Date on one line, amount on next line
+      if (hasDate && !hasAmount && nextLine && (nextLine.match(/^\$?[\d,]+\.?\d{2}$/) || nextLine.match(/\$[\d,]+\.?\d{2}/))) {
+        // Check if there's a description between date and amount
+        if (line.length > 10) {
+          mergedLines.push(line + ' ' + nextLine);
+          i += 2;
+        } else {
+          // Date only, check if next line is description
+          if (nextLine && !nextLine.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}/) && nextNextLine && nextNextLine.match(/\$?[\d,]+\.?\d{2}/)) {
+            mergedLines.push(line + ' ' + nextLine + ' ' + nextNextLine);
+            i += 3;
+          } else {
+            mergedLines.push(line);
+            i++;
+          }
+        }
+        continue;
       }
+      
+      // Pattern 4: Date on one line, description on next, amount on third
+      if (hasDate && !hasAmount && nextLine && !nextLine.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}/) && 
+          !nextLine.match(/[\d,]+\.?\d{2}$/) && nextNextLine && 
+          (nextNextLine.match(/^\$?[\d,]+\.?\d{2}$/) || nextNextLine.match(/\$[\d,]+\.?\d{2}/))) {
+        mergedLines.push(line + ' ' + nextLine + ' ' + nextNextLine);
+        i += 3;
+        continue;
+      }
+      
+      // Pattern 5: Date and partial description, amount on next line
+      if (hasDate && line.length > 10 && !hasAmount && nextLine && 
+          (nextLine.match(/^\$?[\d,]+\.?\d{2}$/) || nextLine.match(/\$[\d,]+\.?\d{2}/))) {
+        mergedLines.push(line + ' ' + nextLine);
+        i += 2;
+        continue;
+      }
+      
+      // Pattern 6: Date only, try to find description and amount in following lines
+      if (hasDate && line.length <= 12 && !hasAmount) {
+        let merged = line;
+        let foundAmount = false;
+        let j = i + 1;
+        let mergeCount = 0;
+        
+        // Look ahead up to 3 lines for description and amount
+        while (j < lines.length && mergeCount < 3 && !foundAmount) {
+          const checkLine = lines[j];
+          const hasNextDate = checkLine.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}/);
+          
+          // Stop if we hit another date
+          if (hasNextDate) {
+            break;
+          }
+          
+          merged += ' ' + checkLine;
+          mergeCount++;
+          
+          // Check if this line has an amount
+          if (checkLine.match(/\$?[\d,]+\.?\d{2}/)) {
+            foundAmount = true;
+            mergedLines.push(merged);
+            i = j + 1;
+            break;
+          }
+          
+          j++;
+        }
+        
+        if (!foundAmount) {
+          // Couldn't find amount, keep original line
+          mergedLines.push(line);
+          i++;
+        }
+        continue;
+      }
+      
+      // Pattern 7: Keep line as is
+      mergedLines.push(line);
+      i++;
     }
     
     lines = mergedLines;
     console.log(`After merging: ${lines.length} lines`);
-    console.log('Sample merged lines:', lines.slice(0, 15));
-    console.log('Lines with dates:', lines.filter(l => l.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/)).slice(0, 15));
+    console.log('Sample merged lines:', lines.slice(0, 20));
+    console.log('Lines with dates:', lines.filter(l => l.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/)).slice(0, 20));
     
     const parsedData = {
       transactions: [],
@@ -333,7 +402,22 @@ class PDFProcessor {
       // Pattern 12: Date Description Amount (description can have numbers)
       /^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s+([\d]{1,3}(?:,\d{3})*\.\d{2})$/,
       // Pattern 13: Date Description Amount (very flexible - last resort)
-      /(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s+([\d,]+\.?\d{2,4})/
+      /(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s+([\d,]+\.?\d{2,4})/,
+      // Pattern 14: Date Description Rs.Amount (Indian format with Rs.)
+      /^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s+Rs\.([\d,]+\.?\d{2})$/i,
+      // Pattern 15: Date Description AmountRs (amount at end with Rs suffix)
+      /^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s+([\d,]+\.?\d{2})Rs$/i,
+      // Pattern 16: Date Description AmountCr (credit indicator)
+      /^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s+([\d,]+\.?\d{2})Cr$/i,
+      // Pattern 17: Date Description AmountCr (no clear separator, amount at end with Cr) - e.g., "22/10/2025MK015295BAAL504S30001,178.82Cr"
+      // Match amount at the very end, possibly with Cr/Rs suffix
+      /^(\d{1,2}\/\d{1,2}\/\d{2,4})(.+?)([\d]{1,3}(?:,\d{3})*\.\d{2})(?:Cr|Rs)?$/i,
+      // Pattern 18: Date Description Amount (with description containing numbers/letters mixed, amount at end)
+      /^(\d{1,2}\/\d{1,2}\/\d{2,4})([A-Za-z0-9\s\*\-\.]+?)([\d]{1,3}(?:,\d{3})*\.\d{2})$/,
+      // Pattern 19: Date Description Amount (amount with comma thousands separator at end)
+      /^(\d{1,2}\/\d{1,2}\/\d{2,4})(.+?)([\d]{1,3}(?:,\d{3})+\.\d{2})$/,
+      // Pattern 20: Date Description Amount (flexible - amount at end, no comma thousands)
+      /^(\d{1,2}\/\d{1,2}\/\d{2,4})(.+?)([\d]+\.\d{2})$/
     ];
 
     console.log(`Extracting transactions from ${lines.length} lines`);
@@ -346,7 +430,8 @@ class PDFProcessor {
       const line = lines[i];
       
       // Skip lines that are clearly not transactions (headers, footers, etc.)
-      if (line.match(/^(Date|Description|Amount|Balance|Statement|Period|Account|Cardholder|Credit Limit|Available|Outstanding|Minimum|Payment|Due|Total|Sample Bank|This is|Generated|Transaction Details|Previous|Payments|Credits|New Purchases|Cash Advances|Fees|Interest|New Balance)/i)) {
+      if (line.match(/^(Date|Description|Amount|Balance|Statement|Period|Account|Cardholder|Credit Limit|Available|Outstanding|Minimum|Payment|Due|Total|Sample Bank|This is|Generated|Transaction Details|Previous|Payments|Credits|New Purchases|Cash Advances|Fees|Interest|New Balance|Card Information|Account Summary)/i)) {
+        skippedCount++;
         continue;
       }
       
@@ -356,12 +441,18 @@ class PDFProcessor {
       }
       
       // Skip lines that are just numbers or amounts without dates
-      if (line.match(/^\$?[\d,]+\.?\d*$/)) {
+      if (line.match(/^(Rs\.?|[\$])?[\d,]+\.?\d*$/i)) {
         continue;
       }
       
-      // Skip lines that are just dates without other content
-      if (line.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}\s*$/)) {
+      // Skip lines that are just dates without other content (but allow if it's part of a merged line)
+      if (line.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}\s*$/) && line.length < 15) {
+        continue;
+      }
+      
+      // Skip summary lines that might have dates but are not transactions
+      if (line.match(/Total|Summary|Balance|Limit|Payment Due|Outstanding|StatementDate|CustomerRelationship|PrimaryCard|MinimumAmount|TotalAmount|Remembertopay|GSTIN|CreditLimit|AvailableCredit|CashLimit/i) && 
+          !line.match(/AMAZON|STARBUCKS|WALMART|NETFLIX|RESTAURANT|GAS|SHOPPING|PURCHASE|PAYMENT|FEE|WITHDRAWAL|Grab|RAZ|NAME-CHEAP|MRDIY|NICHILEMA/i)) {
         continue;
       }
       
@@ -385,13 +476,24 @@ class PDFProcessor {
       
       if (!matched && line.length > 10 && line.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/)) {
         skippedCount++;
-        if (skippedCount <= 5) {
-          console.log(`Skipped potential transaction line ${i}:`, line.substring(0, 80));
+        if (skippedCount <= 10) {
+          console.log(`⚠️ Skipped potential transaction line ${i}:`, line.substring(0, 100));
+          console.log(`   Reason: No pattern matched. Line length: ${line.length}, Has date: ${!!line.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/)}, Has amount: ${!!line.match(/\$?[\d,]+\.?\d{2}/)}`);
         }
       }
     }
 
-    console.log(`Extracted ${transactions.length} transactions (matched: ${matchedCount}, skipped: ${skippedCount})`);
+    console.log(`✅ Extracted ${transactions.length} transactions (matched: ${matchedCount}, skipped: ${skippedCount})`);
+    
+    if (transactions.length === 0 && skippedCount > 0) {
+      console.warn('⚠️ WARNING: No transactions extracted but found lines with dates!');
+      console.warn('This might indicate:');
+      console.warn('1. Transaction format doesn\'t match expected patterns');
+      console.warn('2. PDF text extraction split transactions incorrectly');
+      console.warn('3. Date format is different than expected (MM/DD/YYYY)');
+      console.warn('4. Amount format is different than expected ($XXX.XX)');
+    }
+    
     return transactions;
   }
 
@@ -445,6 +547,31 @@ class PDFProcessor {
       } else if (patternIndex === 12) {
         // Pattern 13: Date Description Amount (very flexible - last resort)
         [, date, description, amount] = match;
+      } else if (patternIndex === 13) {
+        // Pattern 14: Date Description Rs.Amount (Indian format)
+        [, date, description, amount] = match;
+      } else if (patternIndex === 14) {
+        // Pattern 15: Date Description AmountRs
+        [, date, description, amount] = match;
+      } else if (patternIndex === 15) {
+        // Pattern 16: Date Description AmountCr
+        [, date, description, amount] = match;
+      } else if (patternIndex === 16) {
+        // Pattern 17: Date Description AmountCr (no separator)
+        // For this pattern, we need to be careful - the description might include numbers
+        // Try to extract description more carefully by looking for the amount pattern at the end
+        [, date, description, amount] = match;
+        // Clean up description - remove trailing numbers that might be part of amount
+        description = description.replace(/\d+$/, '').trim();
+      } else if (patternIndex === 17) {
+        // Pattern 18: Date Description Amount (mixed alphanumeric description)
+        [, date, description, amount] = match;
+      } else if (patternIndex === 18) {
+        // Pattern 19: Date Description Amount (comma thousands)
+        [, date, description, amount] = match;
+      } else if (patternIndex === 19) {
+        // Pattern 20: Date Description Amount (flexible)
+        [, date, description, amount] = match;
       } else {
         // Default: assume first group is date, second is description, third is amount
         [, date, description, amount] = match;
@@ -455,8 +582,13 @@ class PDFProcessor {
         return null;
       }
 
-      // Clean and parse amount - remove $, commas, and spaces
-      const cleanAmount = amount.replace(/[$\s,]/g, '');
+      // Clean and parse amount - remove $, Rs., commas, spaces, and currency indicators
+      // But preserve the decimal point!
+      let cleanAmount = amount.replace(/[Rs\$,\s]/gi, '').replace(/Cr$/i, '').replace(/Rs$/i, '');
+      // Only remove period if it's not followed by digits (i.e., not a decimal point)
+      // Actually, we should keep all periods - they might be decimal points
+      // Just remove currency symbols and commas
+      cleanAmount = cleanAmount.replace(/,/g, ''); // Remove thousand separators
       const parsedAmount = parseFloat(cleanAmount);
       
       if (isNaN(parsedAmount) || parsedAmount <= 0) {
@@ -471,11 +603,18 @@ class PDFProcessor {
         return null;
       }
 
-      // Parse date
-      const parsedDate = this.parseDate(date);
+      // Parse date - try multiple formats
+      let parsedDate = this.parseDate(date);
       if (!parsedDate) {
-        console.warn('Invalid date:', date);
-        return null;
+        // Try alternative date parsing
+        console.warn(`⚠️ Failed to parse date: "${date}". Trying alternative formats...`);
+        // Try with different separators or formats
+        const altDate = date.replace(/[-\s]/g, '/');
+        parsedDate = this.parseDate(altDate);
+        if (!parsedDate) {
+          console.warn(`Invalid date after alternatives: ${date}`);
+          return null;
+        }
       }
 
       const transaction = {
@@ -507,19 +646,31 @@ class PDFProcessor {
     try {
       // Handle various date formats
       const formats = [
-        /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/, // MM/DD/YYYY
-        /^(\d{1,2})\/(\d{1,2})\/(\d{2})$/, // MM/DD/YY
-        /^(\d{4})-(\d{1,2})-(\d{1,2})$/, // YYYY-MM-DD
+        // Try DD/MM/YYYY first (common in Indian statements)
+        { pattern: /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/, isDDMM: true },
+        { pattern: /^(\d{1,2})\/(\d{1,2})\/(\d{2})$/, isDDMM: true },
+        // Then try MM/DD/YYYY (US format)
+        { pattern: /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/, isDDMM: false },
+        { pattern: /^(\d{1,2})\/(\d{1,2})\/(\d{2})$/, isDDMM: false },
+        // ISO format
+        { pattern: /^(\d{4})-(\d{1,2})-(\d{1,2})$/, isDDMM: false, isISO: true },
       ];
 
       for (const format of formats) {
-        const match = dateStr.match(format);
+        const match = dateStr.match(format.pattern);
         if (match) {
           let year, month, day;
           
-          if (format.source.includes('YYYY-MM-DD')) {
+          if (format.isISO) {
             [, year, month, day] = match;
+          } else if (format.isDDMM) {
+            // DD/MM/YYYY or DD/MM/YY format
+            [, day, month, year] = match;
+            if (year.length === 2) {
+              year = '20' + year;
+            }
           } else {
+            // MM/DD/YYYY or MM/DD/YY format
             [, month, day, year] = match;
             if (year.length === 2) {
               year = '20' + year;
@@ -541,13 +692,39 @@ class PDFProcessor {
   }
 
   /**
+   * Detect currency from text (Rs. = INR, $ = USD)
+   * @param {string} text - Text to analyze
+   * @returns {string} - Currency code (INR, USD, or default USD)
+   */
+  static detectCurrency(text) {
+    if (!text) return 'USD';
+    
+    // Count occurrences of currency symbols
+    const rsCount = (text.match(/Rs\./gi) || []).length;
+    const dollarCount = (text.match(/\$/g) || []).length;
+    
+    // If Rs. appears more frequently, it's INR
+    if (rsCount > dollarCount && rsCount > 0) {
+      return 'INR';
+    }
+    
+    // Default to USD
+    return 'USD';
+  }
+
+  /**
    * Extract summary information from text lines
    * @param {Array} lines - Text lines from PDF
    * @param {Object} metadata - Statement metadata
    * @returns {Object} - Summary data
    */
   static extractSummary(lines, metadata) {
+    // Detect currency from all lines combined
+    const fullText = lines.join(' ');
+    const currency = this.detectCurrency(fullText);
+    
     const summary = {
+      currency: currency,
       cardLimit: 0,
       availableLimit: 0,
       outstandingAmount: 0,
@@ -560,52 +737,136 @@ class PDFProcessor {
     // Common patterns for summary information
     const patterns = {
       cardLimit: [
-        /credit limit[:\s]+[\$]?([\d,]+\.?\d*)/i,
-        /limit[:\s]+[\$]?([\d,]+\.?\d*)/i,
-        /Credit Limit:\s*\$?([\d,]+\.?\d*)/i,
-        /Credit Limit\s*\$?([\d,]+\.?\d*)/i
+        /credit limit[:\s]+(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /limit[:\s]+(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /Credit Limit:\s*(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /Credit Limit\s*(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /TotalCreditLimit[:\s]+(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /TotalCreditLimit[^:]*:([\d,]+\.?\d*)/i
       ],
       availableLimit: [
-        /available credit[:\s]+[\$]?([\d,]+\.?\d*)/i,
-        /available balance[:\s]+[\$]?([\d,]+\.?\d*)/i,
-        /credit available[:\s]+[\$]?([\d,]+\.?\d*)/i,
-        /Available Credit:\s*\$?([\d,]+\.?\d*)/i,
-        /Available Credit\s*\$?([\d,]+\.?\d*)/i
+        /AvailableCreditLimit[:\s]*Rs\.([\d,]+\.?\d*)/i,  // Match Rs. amount after AvailableCreditLimit
+        /available credit[:\s]+(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /available balance[:\s]+(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /credit available[:\s]+(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /Available Credit:\s*(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /Available Credit\s*(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i
       ],
       outstandingAmount: [
-        /outstanding balance[:\s]+[\$]?([\d,]+\.?\d*)/i,
-        /current balance[:\s]+[\$]?([\d,]+\.?\d*)/i,
-        /Outstanding Balance:\s*\$?([\d,]+\.?\d*)/i,
-        /Outstanding Balance\s*\$?([\d,]+\.?\d*)/i,
-        /balance[:\s]+[\$]?([\d,]+\.?\d*)/i
+        /outstanding balance[:\s]+(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /current balance[:\s]+(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /Outstanding Balance:\s*(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /Outstanding Balance\s*(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /balance[:\s]+(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /TotalAmountDue[:\s\(]*TAD[\)]*[:\s]*(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /TotalAmountDue[:\s\(]*[^)]*\)[:\s]*(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /Total.*Due[:\s]+(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /TotalOutstandingIncluding[:\s]*(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i
       ],
       minimumPayment: [
-        /minimum payment[:\s]+[\$]?([\d,]+\.?\d*)/i,
-        /min payment[:\s]+[\$]?([\d,]+\.?\d*)/i,
-        /Minimum Payment Due:\s*\$?([\d,]+\.?\d*)/i,
-        /Minimum Payment Due\s*\$?([\d,]+\.?\d*)/i
+        /minimum payment[:\s]+(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /min payment[:\s]+(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /Minimum Payment Due:\s*(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /Minimum Payment Due\s*(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /MinimumAmountDue[:\s\(]*MAD[\)]*[:\s]*(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /MinimumAmountDue[:\s\(]*[^)]*\)[:\s]*(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i,
+        /MAD[:\s]+(?:Rs\.?|[\$])?([\d,]+\.?\d*)/i
       ],
       dueDate: [
         /due date[:\s]+(\d{1,2}\/\d{1,2}\/\d{2,4})/i,
         /payment due[:\s]+(\d{1,2}\/\d{1,2}\/\d{2,4})/i,
         /Payment Due Date:\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i,
-        /Payment Due Date\s*(\w+\s+\d{1,2},\s+\d{4})/i
+        /Payment Due Date\s*(\w+\s+\d{1,2},\s+\d{4})/i,
+        /Remembertopayby(\d{1,2}-\w+-\d{4})/i,
+        /payby[:\s]+(\d{1,2}-\w+-\d{4})/i
       ]
     };
 
     // Search through all lines for summary information
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const nextLine = lines[i + 1];
+      
+      // Special handling for complex formats where amounts are on next line
+      // Format: "TotalCreditLimitSelfSetCreditLimit:AvailableCreditLimit:" followed by "Rs.40,000.00Rs.40,000.00Rs.30,216.16"
+      if (line.match(/TotalCreditLimit/i) && nextLine && !summary.cardLimit) {
+        // Extract first Rs. amount from next line
+        const cardLimitMatch = nextLine.match(/Rs\.([\d,]+\.?\d*)/i);
+        if (cardLimitMatch) {
+          const cleanValue = cardLimitMatch[1].replace(/,/g, '');
+          const numValue = parseFloat(cleanValue);
+          if (!isNaN(numValue) && numValue > 0) {
+            summary.cardLimit = numValue;
+          }
+        }
+      }
+      
+      if (line.match(/AvailableCreditLimit/i) && nextLine && !summary.availableLimit) {
+        // Extract all Rs. amounts from next line
+        // Format: "Rs.40,000.00Rs.40,000.00Rs.30,216.16" - third one is available limit
+        const allAmounts = nextLine.match(/Rs\.([\d,]+\.?\d*)/gi);
+        if (allAmounts && allAmounts.length >= 3) {
+          // Get the third match (available limit)
+          const availableMatch = allAmounts[2];
+          const amountMatch = availableMatch.match(/Rs\.([\d,]+\.?\d*)/i);
+          if (amountMatch) {
+            const cleanValue = amountMatch[1].replace(/,/g, '');
+            const numValue = parseFloat(cleanValue);
+            if (!isNaN(numValue) && numValue >= 0) {
+              summary.availableLimit = numValue;
+            }
+          }
+        } else if (allAmounts && allAmounts.length > 0) {
+          // Fallback: get the last match if there aren't 3
+          const lastMatch = allAmounts[allAmounts.length - 1];
+          const amountMatch = lastMatch.match(/Rs\.([\d,]+\.?\d*)/i);
+          if (amountMatch) {
+            const cleanValue = amountMatch[1].replace(/,/g, '');
+            const numValue = parseFloat(cleanValue);
+            if (!isNaN(numValue) && numValue >= 0) {
+              summary.availableLimit = numValue;
+            }
+          }
+        }
+      }
+      
       for (const [key, patternList] of Object.entries(patterns)) {
+        // Skip if we already found this value
+        if (key === 'cardLimit' && summary.cardLimit > 0) continue;
+        if (key === 'availableLimit' && summary.availableLimit > 0) continue;
+        
         for (const pattern of patternList) {
           const match = line.match(pattern);
           if (match) {
             const value = match[1];
             
             if (key === 'dueDate') {
-              summary[key] = this.parseDate(value);
+              // Handle date formats like "23-Nov-2025"
+              let dateValue = value;
+              if (value.match(/\d{1,2}-\w+-\d{4}/)) {
+                // Convert "23-Nov-2025" to "23/11/2025"
+                const monthMap = {
+                  'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
+                  'may': '05', 'jun': '06', 'jul': '07', 'aug': '08',
+                  'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+                };
+                const parts = value.split('-');
+                if (parts.length === 3) {
+                  const day = parts[0];
+                  const monthName = parts[1].toLowerCase().substring(0, 3);
+                  const year = parts[2];
+                  const month = monthMap[monthName] || '01';
+                  dateValue = `${day}/${month}/${year}`;
+                }
+              }
+              summary[key] = this.parseDate(dateValue);
             } else {
-              const numValue = parseFloat(value.replace(/[$,]/g, ''));
-              if (!isNaN(numValue)) {
+              // Remove Rs., $, commas and spaces, but preserve decimal point
+              let cleanValue = value.replace(/[Rs\$,\s]/gi, '').trim();
+              // Remove trailing currency indicators
+              cleanValue = cleanValue.replace(/(Rs|Cr)$/i, '');
+              const numValue = parseFloat(cleanValue);
+              if (!isNaN(numValue) && numValue >= 0) {
                 summary[key] = numValue;
               }
             }
@@ -615,8 +876,8 @@ class PDFProcessor {
       }
     }
 
-    // Calculate available limit if not found
-    if (summary.cardLimit > 0 && summary.outstandingAmount > 0) {
+    // Calculate available limit if not found (only if we didn't extract it from PDF)
+    if (summary.availableLimit === 0 && summary.cardLimit > 0 && summary.outstandingAmount > 0) {
       summary.availableLimit = summary.cardLimit - summary.outstandingAmount;
     }
 
@@ -695,6 +956,19 @@ class PDFProcessor {
         console.warn('⚠️ WARNING: No transactions extracted!');
         console.log('Text lines count:', text.split('\n').length);
         console.log('Sample text lines:', text.split('\n').slice(0, 50));
+        console.log('Full text (first 2000 chars):', text.substring(0, 2000));
+        
+        // Try to find potential transaction patterns in the raw text
+        const dateMatches = text.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/g);
+        const amountMatches = text.match(/\$[\d,]+\.?\d{2}/g);
+        console.log(`Found ${dateMatches ? dateMatches.length : 0} date patterns and ${amountMatches ? amountMatches.length : 0} amount patterns in raw text`);
+        
+        if (dateMatches && dateMatches.length > 0) {
+          console.log('Sample dates found:', dateMatches.slice(0, 10));
+        }
+        if (amountMatches && amountMatches.length > 0) {
+          console.log('Sample amounts found:', amountMatches.slice(0, 10));
+        }
       }
       
       // Classify transactions
@@ -714,3 +988,4 @@ class PDFProcessor {
 }
 
 module.exports = PDFProcessor;
+

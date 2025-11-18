@@ -13,6 +13,13 @@ import {
   reprocessStatement
 } from '../../utils/statementApi';
 import { 
+  getStatementTransactions,
+  formatAmount,
+  formatDate,
+  getCategoryColor,
+  getCategoryLabel
+} from '../../utils/transactionApi';
+import { 
   FileText, 
   ArrowLeft, 
   Download, 
@@ -26,14 +33,18 @@ import {
   X,
   Eye,
   Edit3,
-  RefreshCw
+  RefreshCw,
+  DollarSign,
+  XCircle
 } from 'lucide-react';
 
 const StatementDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [statement, setStatement] = useState(null);
+  const [transactions, setTransactions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
   const [error, setError] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -42,6 +53,13 @@ const StatementDetail = () => {
   useEffect(() => {
     loadStatement();
   }, [id]);
+
+  // Load transactions when statement is loaded or changes
+  useEffect(() => {
+    if (statement && (statement._id || statement.id)) {
+      loadTransactions();
+    }
+  }, [statement?._id, statement?.id, id]);
 
   const loadStatement = async () => {
     try {
@@ -81,30 +99,92 @@ const StatementDetail = () => {
     }
   };
 
+  const loadTransactions = async () => {
+    try {
+      setIsLoadingTransactions(true);
+      const statementId = statement?._id || statement?.id || id;
+      console.log('Loading transactions for statement ID:', statementId);
+      
+      const response = await getStatementTransactions(statementId);
+      console.log('Transactions response:', response);
+      
+      if (response.success && response.data) {
+        // Handle both response formats
+        if (response.data.transactions) {
+          console.log(`Loaded ${response.data.transactions.length} transactions`);
+          setTransactions(response.data.transactions);
+        } else if (Array.isArray(response.data)) {
+          console.log(`Loaded ${response.data.length} transactions`);
+          setTransactions(response.data);
+        } else {
+          console.warn('Unexpected response format:', response.data);
+          setTransactions([]);
+        }
+      } else {
+        console.warn('No transactions found or response not successful:', response);
+        setTransactions([]);
+      }
+    } catch (error) {
+      console.error('Error loading transactions:', error);
+      console.error('Error details:', error.response?.data);
+      setTransactions([]);
+      // Don't set error state for transactions, just log it
+    } finally {
+      setIsLoadingTransactions(false);
+    }
+  };
+
   const handleDownloadStatement = async () => {
     try {
-      if (!statement._id) {
-        alert('Statement ID is missing');
+      // Ensure statement is loaded
+      if (!statement) {
+        alert('Statement data not loaded. Please wait for the page to load completely.');
         return;
       }
       
-      if (!statement.fileName) {
-        alert('File name is missing');
+      // Try multiple ID formats: _id, id, or use the URL param
+      const statementId = statement._id || statement.id || id;
+      
+      if (!statementId) {
+        alert('Statement ID is missing. Please refresh the page and try again.');
+        console.error('Statement ID missing. Statement object:', statement);
+        console.error('URL param id:', id);
         return;
       }
       
-      console.log('Downloading statement:', statement._id, statement.fileName);
-      const blob = await downloadStatement(statement._id);
+      // Use fileName from statement or fallback to a default name
+      const fileName = statement.fileName || statement.filePath?.split('/').pop() || `statement-${statementId}.pdf`;
+      
+      console.log('Downloading statement:', {
+        statementId,
+        fileName,
+        statement: statement
+      });
+      
+      const blob = await downloadStatement(statementId);
       
       if (!blob || blob.size === 0) {
         alert('Downloaded file is empty');
         return;
       }
       
-      downloadFileFromBlob(blob, statement.fileName);
+      downloadFileFromBlob(blob, fileName);
     } catch (error) {
       console.error('Error downloading statement:', error);
-      const errorMessage = error.response?.data?.message || error.message || 'Failed to download statement';
+      console.error('Error details:', {
+        statement: statement,
+        id: id,
+        error: error.response?.data || error.message,
+        status: error.response?.status
+      });
+      
+      let errorMessage = 'Failed to download statement';
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       alert(`Failed to download statement: ${errorMessage}`);
     }
   };
@@ -147,15 +227,71 @@ const StatementDetail = () => {
         setError('');
         console.log('Processing statement with ID:', statementId);
         const response = await processStatement(statementId);
+        console.log('Process response:', response);
+        
         if (response.success) {
-          alert(`Statement processed successfully! Found ${response.transactions || 0} transactions.`);
-          loadStatement(); // Reload to show updated data
+          const transactionCount = response.transactions || response.data?.transactions || 0;
+          alert(`Statement processed successfully! Found ${transactionCount} transactions.`);
+          
+          // Reload statement first - this will trigger useEffect to reload transactions
+          await loadStatement();
+          
+          // Also explicitly reload transactions after a short delay to ensure they're saved
+          setTimeout(() => {
+            console.log('Reloading transactions after process...');
+            loadTransactions();
+          }, 1000);
         } else {
           setError(response.message || 'Failed to process statement');
         }
       } catch (error) {
         console.error('Error processing statement:', error);
         setError(error.response?.data?.message || error.message || 'Failed to process statement');
+      } finally {
+        setIsProcessing(false);
+      }
+    }
+  };
+
+  const handleReprocessStatement = async () => {
+    if (!statement) {
+      setError('Statement data not loaded');
+      return;
+    }
+    
+    const statementId = statement._id || statement.id || id;
+    if (!statementId) {
+      setError('Statement ID is missing');
+      return;
+    }
+    
+    if (window.confirm('Reprocess this statement? This will delete existing transactions and extract them again from the PDF.')) {
+      try {
+        setIsProcessing(true);
+        setError('');
+        console.log('Reprocessing statement with ID:', statementId);
+        const response = await reprocessStatement(statementId);
+        console.log('Reprocess response:', response);
+        
+        if (response.success) {
+          const transactionCount = response.transactions || response.data?.transactions || 0;
+          alert(`Statement reprocessed successfully! Found ${transactionCount} transactions.`);
+          
+          // Reload statement first - this will trigger useEffect to reload transactions
+          await loadStatement();
+          
+          // Also explicitly reload transactions after a short delay to ensure they're saved
+          setTimeout(() => {
+            console.log('Reloading transactions after reprocess...');
+            loadTransactions();
+          }, 1000);
+        } else {
+          setError(response.message || 'Failed to reprocess statement');
+        }
+      } catch (error) {
+        console.error('Error reprocessing statement:', error);
+        console.error('Error details:', error.response?.data);
+        setError(error.response?.data?.message || error.message || 'Failed to reprocess statement');
       } finally {
         setIsProcessing(false);
       }
@@ -244,7 +380,21 @@ const StatementDetail = () => {
                     ) : (
                       <RefreshCw className="w-4 h-4 mr-2" />
                     )}
-                    {statement.status === 'failed' ? 'Reprocess' : 'Process Statement'}
+                    Process Statement
+                  </Button>
+                )}
+                {(statement.status === 'processed' || statement.status === 'failed') && (
+                  <Button 
+                    onClick={handleReprocessStatement}
+                    className="flex items-center bg-blue-600 hover:bg-blue-700 text-white"
+                    disabled={isProcessing}
+                  >
+                    {isProcessing ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    ) : (
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                    )}
+                    Reprocess
                   </Button>
                 )}
                 <Button 
@@ -346,10 +496,15 @@ const StatementDetail = () => {
                     <div className="flex items-center">
                       <FileText className="w-8 h-8 text-blue-600 mr-3" />
                       <div>
-                        <p className="font-medium text-gray-900">{statement.fileName || 'Unknown file'}</p>
+                        <p className="font-medium text-gray-900">
+                          {statement.fileName || statement.filePath?.split('/').pop() || 'Unknown file'}
+                        </p>
                         <p className="text-sm text-gray-500">
                           {statement.fileSize ? formatFileSize(statement.fileSize) : 'Size unknown'}
                         </p>
+                        {statement._id && (
+                          <p className="text-xs text-gray-400 mt-1">ID: {statement._id}</p>
+                        )}
                       </div>
                     </div>
                     <Button 
@@ -369,19 +524,147 @@ const StatementDetail = () => {
                 <div className="bg-white rounded-xl shadow-lg p-6">
                   <h3 className="text-xl font-semibold text-gray-900 mb-4">Extracted Data</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {Object.entries(statement.extractedData).map(([key, value]) => (
-                      <div key={key} className="p-3 bg-gray-50 rounded-lg">
-                        <p className="text-sm font-medium text-gray-600 capitalize">
-                          {key.replace(/([A-Z])/g, ' $1').trim()}
-                        </p>
-                        <p className="text-gray-900">
-                          {typeof value === 'number' ? value.toLocaleString() : value}
-                        </p>
-                      </div>
-                    ))}
+                    {Object.entries(statement.extractedData).map(([key, value]) => {
+                      // Format currency amounts
+                      const currency = statement.extractedData.currency || 'USD';
+                      let displayValue = value;
+                      
+                      if (typeof value === 'number' && ['cardLimit', 'availableLimit', 'outstandingAmount', 'minimumPayment', 'totalAmount'].includes(key)) {
+                        displayValue = formatAmount(value, currency);
+                      } else if (typeof value === 'number') {
+                        displayValue = value.toLocaleString();
+                      } else if (key === 'dueDate' && value) {
+                        displayValue = new Date(value).toLocaleDateString();
+                      }
+                      
+                      return (
+                        <div key={key} className="p-3 bg-gray-50 rounded-lg">
+                          <p className="text-sm font-medium text-gray-600 capitalize">
+                            {key.replace(/([A-Z])/g, ' $1').trim()}
+                          </p>
+                          <p className="text-gray-900">
+                            {displayValue}
+                          </p>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
+
+              {/* Transactions Section */}
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-semibold text-gray-900">Transactions</h3>
+                  {transactions.length > 0 && (
+                    <span className="text-sm text-gray-500">
+                      {transactions.length} transaction{transactions.length !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                </div>
+                
+                {isLoadingTransactions ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <span className="ml-2 text-gray-600">Loading transactions...</span>
+                  </div>
+                ) : transactions.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <CreditCard className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+                    <p>No transactions found for this statement.</p>
+                    {statement.status === 'uploaded' && (
+                      <p className="text-sm mt-2">Process the statement to extract transactions.</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    {(() => {
+                      const hasBalance = transactions.some(t => t.balance !== undefined && t.balance !== null);
+                      return (
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Date
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Description
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Amount
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Category
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Status
+                              </th>
+                              {hasBalance && (
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Balance
+                                </th>
+                              )}
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {transactions.map((transaction) => (
+                            <tr key={transaction._id} className="hover:bg-gray-50">
+                              <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                                <div className="flex items-center">
+                                  <Calendar className="w-4 h-4 mr-2 text-gray-400" />
+                                  {formatDate(transaction.date)}
+                                </div>
+                              </td>
+                              <td className="px-4 py-4 text-sm text-gray-900">
+                                <div className="max-w-xs truncate" title={transaction.description}>
+                                  {transaction.description}
+                                </div>
+                              </td>
+                              <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                {formatAmount(transaction.amount, transaction.currency || statement?.extractedData?.currency || 'USD')}
+                              </td>
+                              <td className="px-4 py-4 whitespace-nowrap">
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryColor(transaction.category)}`}>
+                                  {getCategoryLabel(transaction.category)}
+                                </span>
+                              </td>
+                              <td className="px-4 py-4 whitespace-nowrap">
+                                <div className="flex items-center">
+                                  {transaction.verified ? (
+                                    <CheckCircle className="w-5 h-5 text-green-500" />
+                                  ) : (
+                                    <XCircle className="w-5 h-5 text-gray-400" />
+                                  )}
+                                  <span className="ml-2 text-sm text-gray-900">
+                                    {transaction.verified ? 'Verified' : 'Unverified'}
+                                  </span>
+                                </div>
+                              </td>
+                              {hasBalance && (
+                                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                                  {transaction.balance !== undefined && transaction.balance !== null 
+                                    ? formatAmount(transaction.balance, transaction.currency || statement?.extractedData?.currency || 'USD') 
+                                    : '-'}
+                                </td>
+                              )}
+                            </tr>
+                            ))}
+                          </tbody>
+                          {transactions.length > 0 && (
+                            <tfoot className="bg-gray-50">
+                              <tr>
+                                <td colSpan={hasBalance ? 6 : 5} className="px-4 py-3 text-right text-sm font-semibold text-gray-900">
+                                  Total: {formatAmount(transactions.reduce((sum, t) => sum + (t.amount || 0), 0), statement?.extractedData?.currency || transactions[0]?.currency || 'USD')}
+                                </td>
+                              </tr>
+                            </tfoot>
+                          )}
+                        </table>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Sidebar */}

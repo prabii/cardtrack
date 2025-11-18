@@ -53,6 +53,16 @@ class StatementProcessor {
       let parsedData;
       try {
         parsedData = await PDFProcessor.processPDF(statement.filePath, metadata);
+        
+        // Validate that we got some data
+        if (!parsedData || (!parsedData.transactions && !parsedData.summary)) {
+          throw new Error('PDF processing returned no data. The PDF format may not be supported.');
+        }
+        
+        // Warn if no transactions found but don't fail
+        if (!parsedData.transactions || parsedData.transactions.length === 0) {
+          console.warn('⚠️ WARNING: No transactions extracted from PDF. This may be normal for some statement formats.');
+        }
       } catch (pdfError) {
         console.error('PDF processing error:', pdfError);
         // Update statement status to failed with error message
@@ -81,6 +91,7 @@ class StatementProcessor {
         parsedData.transactions.reduce((sum, t) => sum + (t.amount || 0), 0) : 0;
       
       statement.extractedData = {
+        currency: parsedData.summary.currency || 'USD',
         totalTransactions: actualTransactionCount,
         totalAmount: actualTotalAmount,
         cardLimit: parsedData.summary.cardLimit,
@@ -246,6 +257,7 @@ class StatementProcessor {
           date: transactionData.date,
           description: transactionData.description.trim(),
           amount: amountValue,
+          currency: statement.extractedData?.currency || transactionData.currency || 'USD',
           balance: transactionData.balance ? parseFloat(String(transactionData.balance).replace(/[$,]/g, '')) : null,
           category: transactionData.category || 'unclassified',
           verified: false
