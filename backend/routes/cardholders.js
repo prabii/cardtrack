@@ -21,7 +21,7 @@ router.get('/', [
   query('search').optional().isString().trim(),
   query('status').optional().isIn(['active', 'pending', 'inactive', 'suspended']),
   query('page').optional().isInt({ min: 1 }),
-  query('limit').optional().isInt({ min: 1, max: 100 })
+  query('limit').optional().isInt({ min: 1, max: 10000 }).withMessage('Limit must be between 1 and 10000')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);

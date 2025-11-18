@@ -33,6 +33,7 @@ router.get('/dashboard', async (req, res) => {
     }
 
     // Get basic counts
+    // Note: Bank model doesn't have isDeleted field, so we don't filter by it
     const [
       totalCardholders,
       totalStatements,
@@ -42,16 +43,16 @@ router.get('/dashboard', async (req, res) => {
       activeUsers
     ] = await Promise.all([
       Cardholder.countDocuments({ isDeleted: false }),
-      Statement.countDocuments(dateFilter),
-      Transaction.countDocuments(dateFilter),
-      BillPayment.countDocuments(dateFilter),
-      Bank.countDocuments(dateFilter),
+      Statement.countDocuments({ ...dateFilter, isDeleted: false }),
+      Transaction.countDocuments({ ...dateFilter, isDeleted: { $ne: true } }),
+      BillPayment.countDocuments({ ...dateFilter, isDeleted: false }),
+      Bank.countDocuments({}), // Bank doesn't have isDeleted field
       User.countDocuments({ isActive: true })
     ]);
 
     // Get financial summaries
     const financialSummary = await Transaction.aggregate([
-      { $match: dateFilter },
+      { $match: transactionDateFilter },
       {
         $group: {
           _id: null,
@@ -64,7 +65,7 @@ router.get('/dashboard', async (req, res) => {
 
     // Get category breakdown
     const categoryBreakdown = await Transaction.aggregate([
-      { $match: dateFilter },
+      { $match: transactionDateFilter },
       {
         $group: {
           _id: '$category',
@@ -77,7 +78,7 @@ router.get('/dashboard', async (req, res) => {
 
     // Get order subcategory breakdown (for orders category)
     const orderSubcategoryBreakdown = await Transaction.aggregate([
-      { $match: { ...dateFilter, category: 'orders' } },
+      { $match: { ...transactionDateFilter, category: 'orders' } },
       {
         $group: {
           _id: '$orderSubcategory',
@@ -96,12 +97,12 @@ router.get('/dashboard', async (req, res) => {
 
     // Get monthly trends
     const monthlyTrends = await Transaction.aggregate([
-      { $match: dateFilter },
+      { $match: transactionDateFilter },
       {
         $group: {
           _id: {
-            year: { $year: '$createdAt' },
-            month: { $month: '$createdAt' }
+            year: { $year: '$date' },
+            month: { $month: '$date' }
           },
           count: { $sum: 1 },
           totalAmount: { $sum: '$amount' }
@@ -112,7 +113,7 @@ router.get('/dashboard', async (req, res) => {
 
     // Get top cardholders by transaction count
     const topCardholders = await Transaction.aggregate([
-      { $match: dateFilter },
+      { $match: transactionDateFilter },
       {
         $group: {
           _id: '$cardholder',
@@ -165,7 +166,12 @@ router.get('/dashboard', async (req, res) => {
     });
   } catch (error) {
     console.error('Dashboard reports error:', error);
-    res.status(500).json({ success: false, message: 'Server error' });
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || 'Server error',
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
