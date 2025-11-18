@@ -109,14 +109,14 @@ class BankSummaryService {
         updatedAt: bankData.updatedAt
       };
 
-      // Handle statements safely
+      // Handle statements safely - Bank model doesn't have getPublicInfo
       const publicStatements = statements.map(s => {
-        if (s && typeof s.getPublicInfo === 'function') {
-          return s.getPublicInfo();
-        } else if (s && typeof s.toObject === 'function') {
+        if (s && typeof s.toObject === 'function') {
           return s.toObject();
         } else if (s && typeof s.toJSON === 'function') {
           return s.toJSON();
+        } else if (s && typeof s.getPublicInfo === 'function') {
+          return s.getPublicInfo();
         }
         return s;
       });
