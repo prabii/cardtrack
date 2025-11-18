@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useRef } from 'r
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 import { getAccessToken } from '../utils/auth';
+import { getSocketUrl } from '../utils/apiConfig';
 
 const RealtimeContext = createContext();
 
@@ -60,11 +61,8 @@ export const RealtimeProvider = ({ children }) => {
     }
 
     const authToken = getAccessToken();
-    // Dynamic socket URL based on environment
-    const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    const socketUrl = isDevelopment 
-      ? 'http://localhost:3003' 
-      : 'https://cardtrack.onrender.com';
+    // Get socket URL from centralized config
+    const socketUrl = getSocketUrl();
     
     const newSocket = io(socketUrl, {
       auth: {

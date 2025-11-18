@@ -1,17 +1,8 @@
 import axios from 'axios';
 import { generateTokens, storeTokens, clearTokens, addAuthHeader, handleTokenExpiration } from './auth';
 
-// API base URL (in production, this should be your backend URL)
-// Check if running in development (localhost) or production
-const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const defaultApiUrl = isDevelopment 
-  ? 'http://localhost:3003/api' 
-  : 'https://cardtrack.onrender.com/api';
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || defaultApiUrl;
-console.log('[AuthAPI] Base URL:', API_BASE_URL);
-console.log('[AuthAPI] Environment:', import.meta.env.MODE);
-console.log('[AuthAPI] Hostname:', window.location.hostname);
+// Import centralized API configuration
+import { API_BASE_URL } from './apiConfig';
 
 // Create axios instance
 const api = axios.create({

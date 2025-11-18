@@ -1,8 +1,8 @@
 import axios from 'axios';
 import { getAccessToken, clearTokens } from './auth';
 
-// API base URL
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://cardtrack.onrender.com/api';
+// Import centralized API configuration
+import { API_BASE_URL } from './apiConfig';
 
 // Create axios instance
 const api = axios.create({

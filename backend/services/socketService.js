@@ -6,13 +6,42 @@ class SocketService {
   constructor(server) {
     this.io = new Server(server, {
       cors: {
-        origin: [
-          'http://localhost:5173',
-          'http://localhost:5174',
-          'http://localhost:5175',
-          'http://localhost:3000',
-          'http://localhost:3001'
-        ],
+        origin: function (origin, callback) {
+          // Allow requests with no origin (like mobile apps or curl requests)
+          if (!origin) return callback(null, true);
+          
+          const allowedOrigins = [
+            // Development origins
+            'http://localhost:5173',
+            'http://localhost:5174',
+            'http://localhost:5175',
+            'http://localhost:3000',
+            'http://localhost:3001',
+            'http://localhost:3003',
+            // Production origins
+            process.env.FRONTEND_URL,
+            'https://cardtrack-ke78.vercel.app',
+            'https://cardtracker-pro.vercel.app',
+            'https://cardtracker-pro.netlify.app',
+            'https://cardtracker-pro.onrender.com',
+          ].filter(Boolean);
+          
+          // Check if origin is in allowed list
+          if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
+          }
+          
+          // Check regex patterns for Vercel, Netlify, Render
+          if (/^https:\/\/.*\.vercel\.app$/.test(origin) ||
+              /^https:\/\/.*\.netlify\.app$/.test(origin) ||
+              /^https:\/\/.*\.onrender\.com$/.test(origin)) {
+            return callback(null, true);
+          }
+          
+          // Log blocked origin for debugging
+          console.log('Socket.IO CORS: Blocked origin:', origin);
+          callback(new Error('Not allowed by CORS'));
+        },
         methods: ['GET', 'POST'],
         credentials: true
       }
