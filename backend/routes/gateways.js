@@ -5,12 +5,23 @@ const { verifyToken } = require('../middleware/auth');
 const Gateway = require('../models/Gateway');
 const GatewayTransaction = require('../models/GatewayTransaction');
 
+// Test route to verify gateway routes are loaded (before auth middleware)
+router.get('/test', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Gateway routes are working',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // @route   GET /api/gateways
 // @desc    Get all gateways
 // @access  Private
 router.get('/', verifyToken, async (req, res) => {
   try {
+    console.log('GET /api/gateways - Fetching gateways');
     const gateways = await Gateway.find({ isActive: true }).sort({ name: 1 });
+    console.log(`Found ${gateways.length} active gateways`);
     
     res.json({
       success: true,
@@ -18,9 +29,11 @@ router.get('/', verifyToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Get gateways error:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({
       success: false,
-      message: 'Server error'
+      message: 'Server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });

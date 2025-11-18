@@ -240,6 +240,9 @@ server.listen(PORT, async () => {
   console.log(`🏦 Bank endpoints: http://localhost:${PORT}/api/banks`);
   console.log(`💳 Transaction endpoints: http://localhost:${PORT}/api/transactions`);
   console.log(`💸 Bill Payment endpoints: http://localhost:${PORT}/api/bill-payments`);
+  console.log(`🌐 Gateway endpoints: http://localhost:${PORT}/api/gateways`);
+  console.log(`📊 Report endpoints: http://localhost:${PORT}/api/reports`);
+  console.log(`🏢 Company endpoints: http://localhost:${PORT}/api/company`);
   console.log(`🌐 CORS enabled for: Vercel, Netlify, Render domains and localhost`);
 
   await ensureDefaultUsers();
