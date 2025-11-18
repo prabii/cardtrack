@@ -570,13 +570,35 @@ router.get('/processing/stats', async (req, res) => {
 // @desc    Reprocess statement
 router.post('/:id/reprocess', async (req, res) => {
   try {
-    const result = await StatementProcessor.reprocessStatement(req.params.id, req.user.id);
+    const statementId = req.params.id;
+    const userId = req.user?.id || req.user?.userId || req.user?._id;
+    
+    // Validate statement ID
+    if (!statementId || statementId === 'undefined' || statementId === 'null') {
+      return res.status(400).json({
+        success: false,
+        message: 'Statement ID is required'
+      });
+    }
+    
+    // Validate user ID
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'User authentication required'
+      });
+    }
+    
+    console.log('Reprocessing statement:', { statementId, userId });
+    const result = await StatementProcessor.reprocessStatement(statementId, userId);
     res.json(result);
   } catch (error) {
     console.error('Reprocess statement error:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({ 
       success: false, 
-      message: error.message || 'Failed to reprocess statement' 
+      message: error.message || 'Failed to reprocess statement',
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });

@@ -27,17 +27,60 @@ router.get('/', verifyToken, async (req, res) => {
 
     // Build filter object
     const filter = {};
-    if (cardholder) filter.cardholder = cardholder;
-    if (bank) filter.bank = bank;
-    if (statement) filter.statement = statement;
+    if (cardholder) {
+      // Validate MongoDB ObjectId format
+      if (!/^[0-9a-fA-F]{24}$/.test(cardholder)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid cardholder ID format'
+        });
+      }
+      filter.cardholder = cardholder;
+    }
+    if (bank) {
+      if (!/^[0-9a-fA-F]{24}$/.test(bank)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid bank ID format'
+        });
+      }
+      filter.bank = bank;
+    }
+    if (statement) {
+      if (!/^[0-9a-fA-F]{24}$/.test(statement)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid statement ID format'
+        });
+      }
+      filter.statement = statement;
+    }
     if (category) filter.category = category;
     if (status) filter.status = status;
     if (verified !== undefined) filter.verified = verified === 'true';
     
     if (startDate || endDate) {
       filter.date = {};
-      if (startDate) filter.date.$gte = new Date(startDate);
-      if (endDate) filter.date.$lte = new Date(endDate);
+      if (startDate) {
+        const start = new Date(startDate);
+        if (isNaN(start.getTime())) {
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid startDate format'
+          });
+        }
+        filter.date.$gte = start;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        if (isNaN(end.getTime())) {
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid endDate format'
+          });
+        }
+        filter.date.$lte = end;
+      }
     }
 
     // Calculate pagination
@@ -99,7 +142,18 @@ router.get('/', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('Error fetching transactions:', error);
     console.error('Error stack:', error.stack);
+    console.error('Query params:', req.query);
     console.error('Filter used:', filter);
+    
+    // Check if it's a validation error
+    if (error.name === 'CastError' || error.message.includes('Cast to ObjectId')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid ID format in query parameters',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+    
     res.status(500).json({
       success: false,
       message: 'Server error while fetching transactions',
