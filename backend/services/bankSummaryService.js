@@ -29,8 +29,21 @@ class BankSummaryService {
       // Get all statements for this bank
       // Match by cardholder, bankName, and last 4 digits of card
       const cardDigits = bank.cardNumber ? bank.cardNumber.slice(-4) : null;
+      
+      // Safely get cardholder ID (handle both populated and non-populated)
+      let cardholderId;
+      if (bank.cardholder) {
+        if (typeof bank.cardholder === 'object' && bank.cardholder._id) {
+          cardholderId = bank.cardholder._id;
+        } else {
+          cardholderId = bank.cardholder;
+        }
+      } else {
+        throw new Error('Bank missing cardholder reference');
+      }
+      
       const statementQuery = {
-        cardholder: bank.cardholder._id || bank.cardholder,
+        cardholder: cardholderId,
         bankName: bank.bankName,
         isDeleted: false // Statement model has isDeleted field
       };
@@ -44,8 +57,8 @@ class BankSummaryService {
 
       // Get all transactions for this bank
       const transactionFilters = {
-        cardholder: bank.cardholder._id || bank.cardholder,
-        isDeleted: false
+        cardholder: cardholderId,
+        isDeleted: { $ne: true }
       };
       
       // If we have statements, filter by statement IDs

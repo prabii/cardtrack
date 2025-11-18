@@ -72,16 +72,22 @@ class StatementProcessor {
         throw new Error(`PDF processing failed: ${pdfError.message}`);
       }
       console.log('PDF processed successfully:', {
-        transactions: parsedData.transactions.length,
-        cardLimit: parsedData.summary.cardLimit,
-        outstandingAmount: parsedData.summary.outstandingAmount
+        transactions: parsedData.transactions ? parsedData.transactions.length : 0,
+        cardLimit: parsedData.summary?.cardLimit || 0,
+        outstandingAmount: parsedData.summary?.outstandingAmount || 0
       });
-      console.log('Sample transactions:', parsedData.transactions.slice(0, 3));
       
-      if (!parsedData.transactions || parsedData.transactions.length === 0) {
+      if (parsedData.transactions && parsedData.transactions.length > 0) {
+        console.log('Sample transactions:', parsedData.transactions.slice(0, 3));
+      } else {
         console.warn('⚠️ WARNING: No transactions extracted from PDF!');
         console.log('Parsed data keys:', Object.keys(parsedData));
         console.log('Summary data:', parsedData.summary);
+        console.log('Transactions array:', parsedData.transactions);
+        console.log('This might indicate:');
+        console.log('1. PDF format doesn\'t match expected patterns');
+        console.log('2. PDF text extraction failed or returned empty text');
+        console.log('3. Transaction patterns need to be updated for this PDF format');
       }
 
       // Update statement with extracted data

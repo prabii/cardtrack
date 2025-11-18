@@ -947,20 +947,29 @@ class PDFProcessor {
       console.log('Text extracted, length:', text.length);
       console.log('First 500 chars of text:', text.substring(0, 500));
       
+      // Validate extracted text
+      if (!text || text.trim().length === 0) {
+        throw new Error('PDF text extraction returned empty text. The PDF might be image-based or corrupted.');
+      }
+      
+      console.log(`Extracted ${text.length} characters from PDF`);
+      console.log(`Text has ${text.split('\n').length} lines`);
+      
       // Parse statement data
       const parsedData = this.parseStatement(text, metadata);
-      console.log('Statement parsed, transactions found:', parsedData.transactions.length);
-      console.log('Sample transactions:', parsedData.transactions.slice(0, 3));
+      console.log('Statement parsed, transactions found:', parsedData.transactions ? parsedData.transactions.length : 0);
       
-      if (parsedData.transactions.length === 0) {
+      if (parsedData.transactions && parsedData.transactions.length > 0) {
+        console.log('Sample transactions:', parsedData.transactions.slice(0, 3));
+      } else {
         console.warn('⚠️ WARNING: No transactions extracted!');
         console.log('Text lines count:', text.split('\n').length);
-        console.log('Sample text lines:', text.split('\n').slice(0, 50));
+        console.log('Sample text lines (first 50):', text.split('\n').slice(0, 50));
         console.log('Full text (first 2000 chars):', text.substring(0, 2000));
         
         // Try to find potential transaction patterns in the raw text
         const dateMatches = text.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/g);
-        const amountMatches = text.match(/\$[\d,]+\.?\d{2}/g);
+        const amountMatches = text.match(/\$[\d,]+\.?\d{2}/g) || text.match(/Rs\.?[\d,]+\.?\d{2}/gi) || text.match(/[\d,]+\.\d{2}/g);
         console.log(`Found ${dateMatches ? dateMatches.length : 0} date patterns and ${amountMatches ? amountMatches.length : 0} amount patterns in raw text`);
         
         if (dateMatches && dateMatches.length > 0) {
@@ -968,6 +977,13 @@ class PDFProcessor {
         }
         if (amountMatches && amountMatches.length > 0) {
           console.log('Sample amounts found:', amountMatches.slice(0, 10));
+        }
+        
+        // Log lines that contain dates but weren't matched
+        const linesWithDates = text.split('\n').filter(line => line.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/));
+        console.log(`Found ${linesWithDates.length} lines containing dates`);
+        if (linesWithDates.length > 0) {
+          console.log('Sample lines with dates (first 20):', linesWithDates.slice(0, 20));
         }
       }
       

@@ -57,9 +57,12 @@ router.get('/:bankId', [
     res.json(result);
   } catch (error) {
     console.error('Get bank summary error:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Bank ID:', bankId);
     res.status(500).json({ 
       success: false, 
-      message: error.message || 'Failed to get bank summary' 
+      message: error.message || 'Failed to get bank summary',
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
