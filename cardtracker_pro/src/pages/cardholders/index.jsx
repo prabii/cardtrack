@@ -21,8 +21,121 @@ import {
   User,
   CreditCard,
   FileText,
-  AlertTriangle
+  AlertTriangle,
+  Clock,
+  DollarSign
 } from 'lucide-react';
+import axios from 'axios';
+import { API_BASE_URL } from '../../utils/apiConfig';
+import { getAccessToken } from '../../utils/auth';
+
+// Bills Due Panel Component
+const BillsDuePanel = () => {
+  const navigate = useNavigate();
+  const [billsData, setBillsData] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const fetchBillsDue = async () => {
+      try {
+        setIsLoading(true);
+        const token = getAccessToken();
+        const response = await axios.get(`${API_BASE_URL}/bill-payments/stats/due-soon?days=2`, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+
+        if (response.data.success) {
+          setBillsData(response.data.data);
+        }
+      } catch (err) {
+        console.error('Error fetching bills due:', err);
+        setError('Failed to load bills due information');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchBillsDue();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
+        <div className="flex items-center justify-center py-4">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+          <span className="ml-3 text-gray-600">Loading bills due...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !billsData) {
+    return null; // Don't show panel if there's an error
+  }
+
+  const { totalAmount, totalCount, targetDate, byCurrency } = billsData;
+  const formattedDate = new Date(targetDate).toLocaleDateString('en-US', { 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  });
+
+  // Get primary currency (first one or USD)
+  const primaryCurrency = Object.keys(byCurrency)[0] || 'USD';
+  const primaryAmount = byCurrency[primaryCurrency]?.amount || totalAmount;
+
+  if (totalCount === 0) {
+    return null; // Don't show panel if no bills due
+  }
+
+  return (
+    <div className="bg-gradient-to-r from-red-50 to-orange-50 border-2 border-red-200 rounded-xl shadow-lg p-6 mb-8">
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <div className="flex items-center mb-3">
+            <Clock className="w-6 h-6 text-red-600 mr-2" />
+            <h3 className="text-xl font-bold text-red-900">
+              Urgent Action: Bills Due On or Before {formattedDate}
+            </h3>
+          </div>
+          <div className="mt-4">
+            <div className="flex items-baseline">
+              <DollarSign className="w-8 h-8 text-red-600 mr-2" />
+              <span className="text-4xl font-bold text-red-700">
+                {formatAmount(primaryAmount, primaryCurrency)}
+              </span>
+            </div>
+            <p className="text-sm text-red-600 mt-2">
+              {totalCount} bill{totalCount !== 1 ? 's' : ''} due within 2 days
+            </p>
+            {Object.keys(byCurrency).length > 1 && (
+              <div className="mt-3 text-sm text-gray-600">
+                <p className="font-semibold">Breakdown by currency:</p>
+                <ul className="list-disc list-inside mt-1">
+                  {Object.entries(byCurrency).map(([currency, data]) => (
+                    <li key={currency}>
+                      {formatAmount(data.amount, currency)} ({data.count} bills)
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={() => navigate('/bill-payments?status=pending&sortBy=paymentDetails.dueDate&sortOrder=asc')}
+          className="ml-4 px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center font-semibold"
+        >
+          <Eye className="w-5 h-5 mr-2" />
+          Review/Pay Now
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const Cardholders = () => {
   const navigate = useNavigate();
@@ -287,6 +400,9 @@ const Cardholders = () => {
               </div>
             </div>
           </div>
+
+          {/* Bills Due Panel */}
+          <BillsDuePanel />
 
           {/* Statistics Cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">

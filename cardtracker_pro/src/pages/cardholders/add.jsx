@@ -20,7 +20,9 @@ import {
   AlertCircle,
   CheckCircle,
   Eye,
-  EyeOff
+  EyeOff,
+  CreditCard,
+  Plus
 } from 'lucide-react';
 
 const AddCardholder = () => {
@@ -29,15 +31,16 @@ const AddCardholder = () => {
   const isEdit = Boolean(id);
   const [formData, setFormData] = useState({
     name: '',
-    email: '',
-    phone: '',
+    emails: [{ email: '', note: '' }],
+    phones: [{ phone: '', note: '' }],
     address: '',
     dob: '',
     fatherName: '',
     motherName: '',
-    emergencyContact: '',
-    emergencyPhone: '',
-    notes: ''
+    panCardNumber: '',
+    aadharNumber: '',
+    notes: '',
+    cards: []
   });
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -53,15 +56,20 @@ const AddCardholder = () => {
           const ch = resp.data.cardholder || resp.data;
           setFormData({
             name: ch.name || '',
-            email: ch.email || '',
-            phone: ch.phone || '',
+            emails: ch.emails && ch.emails.length > 0 
+              ? ch.emails 
+              : (ch.email ? [{ email: ch.email, note: 'Primary' }] : [{ email: '', note: '' }]),
+            phones: ch.phones && ch.phones.length > 0 
+              ? ch.phones 
+              : (ch.phone ? [{ phone: ch.phone, note: 'Primary' }] : [{ phone: '', note: '' }]),
             address: ch.address || '',
             dob: ch.dob ? String(ch.dob).slice(0, 10) : '',
             fatherName: ch.fatherName || '',
             motherName: ch.motherName || '',
-            emergencyContact: ch.emergencyContact || '',
-            emergencyPhone: ch.emergencyPhone || '',
-            notes: ch.notes || ''
+            panCardNumber: ch.panCardNumber || '',
+            aadharNumber: ch.aadharNumber || '',
+            notes: ch.notes || '',
+            cards: ch.banks || ch.cards || []
           });
         }
       } catch (e) {
@@ -80,16 +88,30 @@ const AddCardholder = () => {
       newErrors.name = 'Name is required';
     }
 
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email is required';
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email address';
+    // Validate emails - at least one required
+    const validEmails = formData.emails.filter(e => e.email && e.email.trim());
+    if (validEmails.length === 0) {
+      newErrors.emails = 'At least one email is required';
+    } else {
+      // Validate each email format
+      formData.emails.forEach((emailObj, index) => {
+        if (emailObj.email && emailObj.email.trim() && !/\S+@\S+\.\S+/.test(emailObj.email)) {
+          newErrors[`email_${index}`] = 'Please enter a valid email address';
+        }
+      });
     }
 
-    if (!formData.phone.trim()) {
-      newErrors.phone = 'Phone number is required';
-    } else if (!/^\+?[\d\s\-\(\)]{10,}$/.test(formData.phone)) {
-      newErrors.phone = 'Please enter a valid phone number';
+    // Validate phones - at least one required
+    const validPhones = formData.phones.filter(p => p.phone && p.phone.trim());
+    if (validPhones.length === 0) {
+      newErrors.phones = 'At least one phone number is required';
+    } else {
+      // Validate each phone format
+      formData.phones.forEach((phoneObj, index) => {
+        if (phoneObj.phone && phoneObj.phone.trim() && !/^\+?[\d\s\-\(\)]{10,}$/.test(phoneObj.phone)) {
+          newErrors[`phone_${index}`] = 'Please enter a valid phone number';
+        }
+      });
     }
 
     if (!formData.address.trim()) {
@@ -115,6 +137,20 @@ const AddCardholder = () => {
       newErrors.motherName = 'Mother\'s name is required';
     }
 
+    // Validate PAN if provided
+    if (formData.panCardNumber && formData.panCardNumber.trim()) {
+      if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(formData.panCardNumber.toUpperCase())) {
+        newErrors.panCardNumber = 'Please enter a valid PAN card number (e.g., ABCDE1234F)';
+      }
+    }
+
+    // Validate Aadhar if provided
+    if (formData.aadharNumber && formData.aadharNumber.trim()) {
+      if (!/^\d{12}$/.test(formData.aadharNumber)) {
+        newErrors.aadharNumber = 'Please enter a valid Aadhar number (12 digits)';
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -134,6 +170,108 @@ const AddCardholder = () => {
         [name]: ''
       }));
     }
+  };
+
+  // Handle email array changes
+  const handleEmailChange = (index, field, value) => {
+    setFormData(prev => {
+      const newEmails = [...prev.emails];
+      newEmails[index] = { ...newEmails[index], [field]: value };
+      return { ...prev, emails: newEmails };
+    });
+    if (errors[`email_${index}`]) {
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[`email_${index}`];
+        return newErrors;
+      });
+    }
+  };
+
+  // Handle phone array changes
+  const handlePhoneChange = (index, field, value) => {
+    setFormData(prev => {
+      const newPhones = [...prev.phones];
+      newPhones[index] = { ...newPhones[index], [field]: value };
+      return { ...prev, phones: newPhones };
+    });
+    if (errors[`phone_${index}`]) {
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[`phone_${index}`];
+        return newErrors;
+      });
+    }
+  };
+
+  // Add new email
+  const addEmail = () => {
+    setFormData(prev => ({
+      ...prev,
+      emails: [...prev.emails, { email: '', note: '' }]
+    }));
+  };
+
+  // Remove email
+  const removeEmail = (index) => {
+    if (formData.emails.length > 1) {
+      setFormData(prev => ({
+        ...prev,
+        emails: prev.emails.filter((_, i) => i !== index)
+      }));
+    }
+  };
+
+  // Add new phone
+  const addPhone = () => {
+    setFormData(prev => ({
+      ...prev,
+      phones: [...prev.phones, { phone: '', note: '' }]
+    }));
+  };
+
+  // Remove phone
+  const removePhone = (index) => {
+    if (formData.phones.length > 1) {
+      setFormData(prev => ({
+        ...prev,
+        phones: prev.phones.filter((_, i) => i !== index)
+      }));
+    }
+  };
+
+  // Handle card changes
+  const handleCardChange = (index, field, value) => {
+    setFormData(prev => {
+      const newCards = [...prev.cards];
+      newCards[index] = { ...newCards[index], [field]: value };
+      return { ...prev, cards: newCards };
+    });
+  };
+
+  // Add new card
+  const addCard = () => {
+    setFormData(prev => ({
+      ...prev,
+      cards: [...prev.cards, {
+        bankName: '',
+        type: 'NORMAL',
+        cardNumber: '',
+        exp: '',
+        cvv: '',
+        cardLimit: '',
+        statementDate: '',
+        dueDate: ''
+      }]
+    }));
+  };
+
+  // Remove card
+  const removeCard = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      cards: prev.cards.filter((_, i) => i !== index)
+    }));
   };
 
   // Handle form submission
@@ -246,54 +384,108 @@ const AddCardholder = () => {
                     )}
                   </div>
 
-                  {/* Email */}
-                  <div>
+                  {/* Multiple Emails */}
+                  <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Email Address *
+                      Email Addresses * (At least 1 required)
                     </label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                      <input
-                        type="email"
-                        name="email"
-                        value={formData.email}
-                        onChange={handleChange}
-                        className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                          errors.email ? 'border-red-500' : 'border-gray-300'
-                        }`}
-                        placeholder="Enter email address"
-                      />
-                    </div>
-                    {errors.email && (
+                    {formData.emails.map((emailObj, index) => (
+                      <div key={index} className="mb-3 flex gap-2">
+                        <div className="flex-1 relative">
+                          <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                          <input
+                            type="email"
+                            value={emailObj.email}
+                            onChange={(e) => handleEmailChange(index, 'email', e.target.value)}
+                            className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                              errors[`email_${index}`] ? 'border-red-500' : 'border-gray-300'
+                            }`}
+                            placeholder="Enter email address"
+                          />
+                        </div>
+                        <input
+                          type="text"
+                          value={emailObj.note}
+                          onChange={(e) => handleEmailChange(index, 'note', e.target.value)}
+                          className="w-32 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="Note (optional)"
+                        />
+                        {formData.emails.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeEmail(index)}
+                            className="px-3 py-3 bg-red-100 text-red-600 rounded-lg hover:bg-red-200"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={addEmail}
+                      className="text-sm text-blue-600 hover:text-blue-800 flex items-center"
+                    >
+                      <Plus className="w-4 h-4 mr-1" />
+                      Add Another Email
+                    </button>
+                    {errors.emails && (
                       <p className="mt-1 text-sm text-red-600 flex items-center">
                         <AlertCircle className="w-4 h-4 mr-1" />
-                        {errors.email}
+                        {errors.emails}
                       </p>
                     )}
                   </div>
 
-                  {/* Phone */}
-                  <div>
+                  {/* Multiple Phones */}
+                  <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Phone Number *
+                      Phone Numbers * (At least 1 required)
                     </label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                      <input
-                        type="tel"
-                        name="phone"
-                        value={formData.phone}
-                        onChange={handleChange}
-                        className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                          errors.phone ? 'border-red-500' : 'border-gray-300'
-                        }`}
-                        placeholder="Enter phone number"
-                      />
-                    </div>
-                    {errors.phone && (
+                    {formData.phones.map((phoneObj, index) => (
+                      <div key={index} className="mb-3 flex gap-2">
+                        <div className="flex-1 relative">
+                          <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                          <input
+                            type="tel"
+                            value={phoneObj.phone}
+                            onChange={(e) => handlePhoneChange(index, 'phone', e.target.value)}
+                            className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                              errors[`phone_${index}`] ? 'border-red-500' : 'border-gray-300'
+                            }`}
+                            placeholder="Enter phone number"
+                          />
+                        </div>
+                        <input
+                          type="text"
+                          value={phoneObj.note}
+                          onChange={(e) => handlePhoneChange(index, 'note', e.target.value)}
+                          className="w-32 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="Note (optional)"
+                        />
+                        {formData.phones.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removePhone(index)}
+                            className="px-3 py-3 bg-red-100 text-red-600 rounded-lg hover:bg-red-200"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={addPhone}
+                      className="text-sm text-blue-600 hover:text-blue-800 flex items-center"
+                    >
+                      <Plus className="w-4 h-4 mr-1" />
+                      Add Another Phone
+                    </button>
+                    {errors.phones && (
                       <p className="mt-1 text-sm text-red-600 flex items-center">
                         <AlertCircle className="w-4 h-4 mr-1" />
-                        {errors.phone}
+                        {errors.phones}
                       </p>
                     )}
                   </div>
@@ -413,50 +605,191 @@ const AddCardholder = () => {
                 </div>
               </div>
 
-              {/* Emergency Contact Section */}
+              {/* Additional Information Section */}
               <div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
-                  <Phone className="w-6 h-6 mr-2 text-amber-600" />
-                  Emergency Contact (Optional)
+                  <User className="w-6 h-6 mr-2 text-purple-600" />
+                  Additional Information (Optional)
                 </h3>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Emergency Contact Name */}
+                  {/* PAN Card Number */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Emergency Contact Name
+                      PAN Card Number
                     </label>
                     <div className="relative">
                       <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                       <input
                         type="text"
-                        name="emergencyContact"
-                        value={formData.emergencyContact}
+                        name="panCardNumber"
+                        value={formData.panCardNumber}
                         onChange={handleChange}
-                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="Enter emergency contact name"
+                        maxLength={10}
+                        className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                          errors.panCardNumber ? 'border-red-500' : 'border-gray-300'
+                        }`}
+                        placeholder="ABCDE1234F"
+                        style={{ textTransform: 'uppercase' }}
                       />
                     </div>
+                    {errors.panCardNumber && (
+                      <p className="mt-1 text-sm text-red-600 flex items-center">
+                        <AlertCircle className="w-4 h-4 mr-1" />
+                        {errors.panCardNumber}
+                      </p>
+                    )}
                   </div>
 
-                  {/* Emergency Contact Phone */}
+                  {/* Aadhar Number */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Emergency Contact Phone
+                      Aadhar Number
                     </label>
                     <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                      <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                       <input
-                        type="tel"
-                        name="emergencyPhone"
-                        value={formData.emergencyPhone}
+                        type="text"
+                        name="aadharNumber"
+                        value={formData.aadharNumber}
                         onChange={handleChange}
-                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="Enter emergency contact phone"
+                        maxLength={12}
+                        className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                          errors.aadharNumber ? 'border-red-500' : 'border-gray-300'
+                        }`}
+                        placeholder="123456789012"
                       />
                     </div>
+                    {errors.aadharNumber && (
+                      <p className="mt-1 text-sm text-red-600 flex items-center">
+                        <AlertCircle className="w-4 h-4 mr-1" />
+                        {errors.aadharNumber}
+                      </p>
+                    )}
                   </div>
                 </div>
+              </div>
+
+              {/* Cards Section */}
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
+                  <CreditCard className="w-6 h-6 mr-2 text-green-600" />
+                  Cards
+                </h3>
+                
+                {formData.cards.map((card, index) => (
+                  <div key={index} className="mb-6 p-6 border border-gray-200 rounded-lg bg-gray-50">
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-lg font-semibold text-gray-900">Card {index + 1}</h4>
+                      {formData.cards.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => removeCard(index)}
+                          className="px-3 py-1 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 text-sm"
+                        >
+                          Remove Card
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Bank *</label>
+                        <input
+                          type="text"
+                          value={card.bankName || ''}
+                          onChange={(e) => handleCardChange(index, 'bankName', e.target.value)}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="Bank Name"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Type *</label>
+                        <select
+                          value={card.type || 'NORMAL'}
+                          onChange={(e) => handleCardChange(index, 'type', e.target.value)}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          <option value="NORMAL">NORMAL</option>
+                          <option value="FD">FD</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Card Number *</label>
+                        <input
+                          type="text"
+                          value={card.cardNumber || ''}
+                          onChange={(e) => handleCardChange(index, 'cardNumber', e.target.value)}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="Card Number"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Expiry (MM/YY)</label>
+                        <input
+                          type="text"
+                          value={card.exp || ''}
+                          onChange={(e) => handleCardChange(index, 'exp', e.target.value)}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="MM/YY"
+                          maxLength={5}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">CVV</label>
+                        <input
+                          type="text"
+                          value={card.cvv || ''}
+                          onChange={(e) => handleCardChange(index, 'cvv', e.target.value)}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="CVV"
+                          maxLength={4}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Limit *</label>
+                        <input
+                          type="number"
+                          value={card.cardLimit || ''}
+                          onChange={(e) => handleCardChange(index, 'cardLimit', e.target.value)}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="Card Limit"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Statement Date (Day of Month)</label>
+                        <input
+                          type="number"
+                          value={card.statementDate || ''}
+                          onChange={(e) => handleCardChange(index, 'statementDate', e.target.value)}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="1-31"
+                          min="1"
+                          max="31"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Due Date (Day of Month)</label>
+                        <input
+                          type="number"
+                          value={card.dueDate || ''}
+                          onChange={(e) => handleCardChange(index, 'dueDate', e.target.value)}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="1-31"
+                          min="1"
+                          max="31"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addCard}
+                  className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors flex items-center justify-center"
+                >
+                  <Plus className="w-5 h-5 mr-2 text-blue-600" />
+                  Add Card
+                </button>
               </div>
 
               {/* Additional Notes Section */}

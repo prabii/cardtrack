@@ -283,28 +283,44 @@ export const validateCardholderData = (data) => {
  * @returns {Object} - Formatted data for API
  */
 export const formatCardholderData = (formData) => {
-  const emergencyContact = {};
+  // Filter out empty emails and phones
+  const emails = (formData.emails || []).filter(e => e.email && e.email.trim()).map(e => ({
+    email: e.email.trim(),
+    note: e.note?.trim() || ''
+  }));
   
-  // Only include emergency contact name if it's not empty
-  if (formData.emergencyContact?.trim()) {
-    emergencyContact.name = formData.emergencyContact.trim();
-  }
-  
-  // Only include emergency contact phone if it's not empty
-  if (formData.emergencyPhone?.trim()) {
-    emergencyContact.phone = formData.emergencyPhone.trim();
-  }
+  const phones = (formData.phones || []).filter(p => p.phone && p.phone.trim()).map(p => ({
+    phone: p.phone.trim(),
+    note: p.note?.trim() || ''
+  }));
+
+  // Format cards data
+  const cards = (formData.cards || []).filter(card => card.bankName && card.bankName.trim()).map(card => ({
+    bankName: card.bankName.trim(),
+    type: card.type || 'NORMAL',
+    cardNumber: card.cardNumber?.trim() || '',
+    exp: card.exp?.trim() || '',
+    cvv: card.cvv?.trim() || '',
+    cardLimit: parseFloat(card.cardLimit) || 0,
+    statementDate: card.statementDate ? parseInt(card.statementDate) : undefined,
+    dueDate: card.dueDate ? parseInt(card.dueDate) : undefined
+  }));
 
   return {
     name: formData.name?.trim(),
-    email: formData.email?.trim().toLowerCase(),
-    phone: formData.phone?.trim(),
+    emails: emails.length > 0 ? emails : undefined,
+    phones: phones.length > 0 ? phones : undefined,
+    // Set primary email/phone from first entry for backward compatibility
+    email: emails.length > 0 ? emails[0].email : formData.email?.trim().toLowerCase(),
+    phone: phones.length > 0 ? phones[0].phone : formData.phone?.trim(),
     address: formData.address?.trim(),
     dob: formData.dob,
     fatherName: formData.fatherName?.trim(),
     motherName: formData.motherName?.trim(),
-    ...(Object.keys(emergencyContact).length > 0 && { emergencyContact }),
-    notes: formData.notes?.trim() || ''
+    panCardNumber: formData.panCardNumber?.trim().toUpperCase() || undefined,
+    aadharNumber: formData.aadharNumber?.trim() || undefined,
+    notes: formData.notes?.trim() || '',
+    cards: cards.length > 0 ? cards : undefined
   };
 };
 
