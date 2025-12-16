@@ -7,6 +7,7 @@ import {
   XCircleIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../contexts/AuthContext';
+import { API_BASE_URL } from '../../utils/apiConfig';
 
 const AddUser = () => {
   const navigate = useNavigate();
@@ -25,11 +26,8 @@ const AddUser = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  // Use dynamic API URL
-  const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  const apiUrl = isDevelopment 
-    ? 'http://localhost:3003/api' 
-    : 'https://cardtrack.onrender.com/api';
+  // Use centralized API URL
+  const apiUrl = API_BASE_URL;
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
