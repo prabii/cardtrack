@@ -149,6 +149,7 @@ const corsOptions = {
       'https://cardtracker-pro.netlify.app',
       'https://cardtracker-pro.onrender.com',
       'http://84.247.136.87',               // VPS IP (HTTP)
+      'https://84.247.136.87',              // VPS IP (HTTPS)
       ...envOrigins
     ].filter(Boolean); // Remove undefined values
     
@@ -166,7 +167,7 @@ const corsOptions = {
       return callback(null, true);
     }
     
-    // Also allow VPS IP with or without port
+    // Also allow VPS IP with or without port (HTTP or HTTPS)
     if (origin.startsWith('http://84.247.136.87') || origin.startsWith('https://84.247.136.87')) {
       console.log('CORS: Allowed origin (VPS IP):', origin);
       return callback(null, true);
