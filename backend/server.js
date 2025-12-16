@@ -125,6 +125,12 @@ const corsOptions = {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
+    // Allowlist from environment (comma-separated)
+    const envOrigins = (process.env.CORS_ORIGIN || '')
+      .split(',')
+      .map(o => o.trim())
+      .filter(Boolean);
+
     const allowedOrigins = [
       // Development origins
       'http://localhost:5173',  // Vite default port
@@ -138,9 +144,12 @@ const corsOptions = {
       // Production origins
       process.env.FRONTEND_URL,
       'https://cardtrack-ke78.vercel.app',  // Your actual Vercel domain
+      'https://cardtrack-xi.vercel.app',    // Current Vercel domain
       'https://cardtracker-pro.vercel.app',
       'https://cardtracker-pro.netlify.app',
       'https://cardtracker-pro.onrender.com',
+      'http://84.247.136.87',               // VPS IP (HTTP)
+      ...envOrigins
     ].filter(Boolean); // Remove undefined values
     
     // Check if origin is in allowed list
@@ -203,13 +212,47 @@ global.socketService = socketService;
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({
-    success: true,
-    message: 'CardTracker Pro API is running',
-    timestamp: new Date().toISOString(),
-    allowedOrigins: corsOptions.origin,
-    connectedUsers: socketService.getConnectedUsers().length
-  });
+  try {
+    // Get allowed origins list for display
+    const envOrigins = (process.env.CORS_ORIGIN || '')
+      .split(',')
+      .map(o => o.trim())
+      .filter(Boolean);
+    
+    const allowedOrigins = [
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'http://localhost:5175',
+      'http://localhost:4028',
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:3003',
+      'http://localhost:3004',
+      process.env.FRONTEND_URL,
+      'https://cardtrack-ke78.vercel.app',
+      'https://cardtrack-xi.vercel.app',
+      'https://cardtracker-pro.vercel.app',
+      'https://cardtracker-pro.netlify.app',
+      'https://cardtracker-pro.onrender.com',
+      'http://84.247.136.87',
+      ...envOrigins
+    ].filter(Boolean);
+
+    res.json({
+      success: true,
+      message: 'CardTracker Pro API is running',
+      timestamp: new Date().toISOString(),
+      allowedOrigins: allowedOrigins,
+      connectedUsers: socketService ? socketService.getConnectedUsers().length : 0
+    });
+  } catch (error) {
+    console.error('Health check error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Health check failed',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
 });
 
 // 404 handler
