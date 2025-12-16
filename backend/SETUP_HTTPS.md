@@ -25,6 +25,12 @@ sudo nano /etc/nginx/sites-available/cardtrack-backend
 
 Replace the content with:
 ```nginx
+# WebSocket upgrade map
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
 server {
     listen 80;
     server_name 84.247.136.87;
@@ -53,18 +59,30 @@ server {
         proxy_pass http://localhost:3003;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
+        proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
         
+        # WebSocket support
+        proxy_set_header Sec-WebSocket-Extensions $http_sec_websocket_extensions;
+        proxy_set_header Sec-WebSocket-Key $http_sec_websocket_key;
+        proxy_set_header Sec-WebSocket-Version $http_sec_websocket_version;
+        
         # Timeouts for long-running requests
         proxy_connect_timeout 60s;
         proxy_send_timeout 60s;
         proxy_read_timeout 60s;
     }
+}
+
+# WebSocket upgrade map (add this before the server blocks)
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
 }
 ```
 

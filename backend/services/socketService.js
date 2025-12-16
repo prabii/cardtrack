@@ -10,6 +10,12 @@ class SocketService {
           // Allow requests with no origin (like mobile apps or curl requests)
           if (!origin) return callback(null, true);
           
+          // Allowlist from environment (comma-separated)
+          const envOrigins = (process.env.CORS_ORIGIN || '')
+            .split(',')
+            .map(o => o.trim())
+            .filter(Boolean);
+
           const allowedOrigins = [
             // Development origins
             'http://localhost:5173',
@@ -21,13 +27,18 @@ class SocketService {
             // Production origins
             process.env.FRONTEND_URL,
             'https://cardtrack-ke78.vercel.app',
+            'https://cardtrack-xi.vercel.app',
             'https://cardtracker-pro.vercel.app',
             'https://cardtracker-pro.netlify.app',
             'https://cardtracker-pro.onrender.com',
+            'http://84.247.136.87',               // VPS IP (HTTP)
+            'https://84.247.136.87',              // VPS IP (HTTPS)
+            ...envOrigins
           ].filter(Boolean);
           
           // Check if origin is in allowed list
           if (allowedOrigins.includes(origin)) {
+            console.log('Socket.IO CORS: Allowed origin (exact match):', origin);
             return callback(null, true);
           }
           
@@ -35,11 +46,19 @@ class SocketService {
           if (/^https:\/\/.*\.vercel\.app$/.test(origin) ||
               /^https:\/\/.*\.netlify\.app$/.test(origin) ||
               /^https:\/\/.*\.onrender\.com$/.test(origin)) {
+            console.log('Socket.IO CORS: Allowed origin (regex match):', origin);
+            return callback(null, true);
+          }
+          
+          // Also allow VPS IP with or without port (HTTP or HTTPS)
+          if (origin.startsWith('http://84.247.136.87') || origin.startsWith('https://84.247.136.87')) {
+            console.log('Socket.IO CORS: Allowed origin (VPS IP):', origin);
             return callback(null, true);
           }
           
           // Log blocked origin for debugging
           console.log('Socket.IO CORS: Blocked origin:', origin);
+          console.log('Socket.IO CORS: Allowed origins:', allowedOrigins);
           callback(new Error('Not allowed by CORS'));
         },
         methods: ['GET', 'POST'],
