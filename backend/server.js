@@ -154,18 +154,27 @@ const corsOptions = {
     
     // Check if origin is in allowed list
     if (allowedOrigins.includes(origin)) {
+      console.log('CORS: Allowed origin (exact match):', origin);
       return callback(null, true);
     }
     
-    // Check regex patterns
+    // Check regex patterns for Vercel, Netlify, Render
     if (/^https:\/\/.*\.vercel\.app$/.test(origin) ||
         /^https:\/\/.*\.netlify\.app$/.test(origin) ||
         /^https:\/\/.*\.onrender\.com$/.test(origin)) {
+      console.log('CORS: Allowed origin (regex match):', origin);
+      return callback(null, true);
+    }
+    
+    // Also allow VPS IP with or without port
+    if (origin.startsWith('http://84.247.136.87') || origin.startsWith('https://84.247.136.87')) {
+      console.log('CORS: Allowed origin (VPS IP):', origin);
       return callback(null, true);
     }
     
     // Log the origin for debugging
     console.log('CORS: Blocked origin:', origin);
+    console.log('CORS: Allowed origins:', allowedOrigins);
     callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
