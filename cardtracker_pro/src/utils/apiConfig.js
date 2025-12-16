@@ -20,9 +20,9 @@ const getApiBaseUrl = () => {
     return 'http://localhost:3003/api';
   }
 
-  // Priority 3: Default to VPS API
+  // Priority 3: Default to VPS API (HTTPS)
   console.log('[API Config] Using VPS API (84.247.136.87)');
-  return 'http://84.247.136.87/api';
+  return 'https://84.247.136.87/api';
 };
 
 // Detect socket URL
@@ -40,8 +40,8 @@ export const getSocketUrl = () => {
     return 'http://localhost:3003';
   }
 
-  // Priority 3: Default to VPS socket URL
-  return 'http://84.247.136.87';
+  // Priority 3: Default to VPS socket URL (HTTPS)
+  return 'https://84.247.136.87';
 };
 
 export const API_BASE_URL = getApiBaseUrl();
